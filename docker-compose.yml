@@ -1,0 +1,15 @@
+services:
+  crowd-map:
+    build: .
+    ports:
+      - "8765:8765"
+
+  crowd-map-mcp:
+    build: .
+    command: ["python", "mcp_server.py"]
+    ports:
+      - "8000:8000"
+    environment:
+      - SIMULATION_URL=http://crowd-map:8765
+    depends_on:
+      - crowd-map
