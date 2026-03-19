@@ -210,16 +210,30 @@ function draw(data) {
 
   if (data.venues) drawVenues(data.venues);
 
-  // Draw assignment edges (group -> venue)
+  // Draw assignment edges: rally points -> venues
+  // Aggregate assignment counts per (rally_node, venueId)
   if (data.assignments && data.groups && data.venues) {
-    const maxCount = Math.max(1, ...data.assignments.map(a => a.count));
+    const rallyCount = {};
     for (const a of data.assignments) {
       const g = data.groups[a.groupIndex];
-      const v = data.venues.find(vn => vn.id === a.venueId);
-      if (!g || !v) continue;
-      const pFrom = map.latLngToContainerPoint([g.lat, g.lng]);
+      if (!g) continue;
+      const rk = g.rally_node + ':' + a.venueId;
+      rallyCount[rk] = (rallyCount[rk] || 0) + a.count;
+    }
+    const maxCount = Math.max(1, ...Object.values(rallyCount));
+    const rallyCoords = {
+      [NOKIA_RALLY_NODE]:    [47.48616316916723, 19.079061866933007],
+      [ERICSSON_RALLY_NODE]: [47.47132533866037, 19.06329047791874],
+    };
+    for (const [rk, count] of Object.entries(rallyCount)) {
+      const [rally_node, venueIdStr] = rk.split(':');
+      const venueId = parseInt(venueIdStr);
+      const v = data.venues.find(vn => vn.id === venueId);
+      const coords = rallyCoords[rally_node];
+      if (!v || !coords) continue;
+      const pFrom = map.latLngToContainerPoint(coords);
       const pTo   = map.latLngToContainerPoint([v.lat, v.lng]);
-      const t     = Math.min(a.count / maxCount, 1);
+      const t     = Math.min(count / maxCount, 1);
       ctx.beginPath();
       ctx.moveTo(pFrom.x, pFrom.y);
       ctx.lineTo(pTo.x, pTo.y);
