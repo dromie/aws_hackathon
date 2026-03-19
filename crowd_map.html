@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+<meta charset="UTF-8">
+<title>Tömeg szimuláció – Budapest</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: Arial, sans-serif; background: #111; }
+  #map { width: 100vw; height: 100vh; }
+  #overlay { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; pointer-events: none; }
+  #status {
+    position: fixed; bottom: 0; left: 0; right: 0;
+    background: rgba(20,20,20,0.85); color: #ddd;
+    padding: 8px 16px; font-size: 14px; z-index: 1000;
+  }
+</style>
+</head>
+<body>
+
+<div id="map"></div>
+<canvas id="overlay"></canvas>
+<div id="status">Betöltés...</div>
+
+<script>
+// --- Térkép ---
+const RALLY = [47.5149, 18.5763]; // Hősök tere
+const map = L.map('map', { zoomControl: true }).setView([47.5140, 18.5760], 15);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '© OpenStreetMap contributors'
+}).addTo(map);
+
+// Rally jelölő
+L.circleMarker(RALLY, { radius: 12, color: 'red', weight: 2, fill: false, dashArray: '5,4' })
+  .bindTooltip('Gyülekezési pont', { permanent: true, direction: 'top' })
+  .addTo(map);
+
+// --- Canvas overlay ---
+const canvas = document.getElementById('overlay');
+const ctx = canvas.getContext('2d');
+
+function resizeCanvas() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+}
+resizeCanvas();
+window.addEventListener('resize', resizeCanvas);
+
+// --- Koordináta konverzió ---
+function latLngToXY(lat, lng) {
+  const p = map.latLngToContainerPoint([lat, lng]);
+  return [p.x, p.y];
+}
+
+function randomLatLng() {
+  return [
+    47.505 + Math.random() * 0.018,
+    18.565 + Math.random() * 0.022
+  ];
+}
+
+// --- Csoport osztály ---
+class Group {
+  constructor() {
+    const [lat, lng] = randomLatLng();
+    this.lat = lat;
+    this.lng = lng;
+    this.count = 3 + Math.floor(Math.random() * 3);
+    this.alive = true;
+    this.vLat = (Math.random() - 0.5) * 0.00012;
+    this.vLng = (Math.random() - 0.5) * 0.00016;
+  }
+
+  get radius() { return Math.max(10, 8 + this.count * 1.6); }
+
+  get color() {
+    const t = Math.min(this.count / 60, 1);
+    const r = Math.round(30 + 225 * t);
+    const g = Math.round(180 * (1 - t));
+    const b = Math.round(220 * (1 - t));
+    return `rgba(${r},${g},${b},0.75)`;
+  }
+
+  wanderStep() {
+    if (Math.random() < 0.03) {
+      this.vLat = (Math.random() - 0.5) * 0.00012;
+      this.vLng = (Math.random() - 0.5) * 0.00016;
+    }
+    this.lat += this.vLat;
+    this.lng += this.vLng;
+    this.lat = Math.max(47.503, Math.min(47.525, this.lat));
+    this.lng = Math.max(18.563, Math.min(18.589, this.lng));
+    if (this.lat <= 47.503 || this.lat >= 47.525) this.vLat *= -1;
+    if (this.lng <= 18.563 || this.lng >= 18.589) this.vLng *= -1;
+  }
+
+  rallyStep() {
+    const dLat = RALLY[0] - this.lat;
+    const dLng = RALLY[1] - this.lng;
+    const dist = Math.hypot(dLat, dLng);
+    if (dist > 0.00005) {
+      const speed = 0.00008 + this.count * 0.000002;
+      this.lat += (dLat / dist) * speed;
+      this.lng += (dLng / dist) * speed;
+    }
+  }
+
+  draw() {
+    const [x, y] = latLngToXY(this.lat, this.lng);
+    const r = this.radius;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fillStyle = this.color;
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.8)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    ctx.fillStyle = 'white';
+    ctx.font = `bold ${Math.max(10, Math.min(14, 8 + this.count * 0.2))}px Arial`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(this.count, x, y);
+  }
+}
+
+// --- Szimuláció ---
+const WANDER_MS = 6000;
+let groups = Array.from({ length: 12 }, () => new Group());
+let phase = 'wander';
+let startTime = null;
+
+const statusEl = document.getElementById('status');
+
+function mergeGroups() {
+  const alive = groups.filter(g => g.alive);
+  for (let i = 0; i < alive.length; i++) {
+    for (let j = i + 1; j < alive.length; j++) {
+      const a = alive[i], b = alive[j];
+      if (!b.alive) continue;
+      const [ax, ay] = latLngToXY(a.lat, a.lng);
+      const [bx, by] = latLngToXY(b.lat, b.lng);
+      if (Math.hypot(ax - bx, ay - by) < a.radius + b.radius - 6) {
+        a.count += b.count;
+        b.alive = false;
+      }
+    }
+  }
+}
+
+function tick(ts) {
+  if (!startTime) startTime = ts;
+  const elapsed = ts - startTime;
+
+  if (phase === 'wander' && elapsed > WANDER_MS) {
+    phase = 'rally';
+  }
+
+  groups.filter(g => g.alive).forEach(g => {
+    phase === 'wander' ? g.wanderStep() : g.rallyStep();
+  });
+
+  mergeGroups();
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  groups.filter(g => g.alive).forEach(g => g.draw());
+
+  const total = groups.filter(g => g.alive).reduce((s, g) => s + g.count, 0);
+  const groupCount = groups.filter(g => g.alive).length;
+  const phaseLabel = phase === 'wander'
+    ? `🚶 Bolyongás... (${Math.max(0, Math.ceil((WANDER_MS - elapsed) / 1000))} mp)`
+    : '🏃 Gyülekezés → Hősök tere';
+  statusEl.textContent = `${phaseLabel}   |   Csoportok: ${groupCount}   |   Emberek összesen: ${total}`;
+
+  requestAnimationFrame(tick);
+}
+
+map.whenReady(() => requestAnimationFrame(tick));
+</script>
+</body>
+</html>
