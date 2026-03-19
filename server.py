@@ -70,52 +70,58 @@ _RALLY_NODE = _nearest_node(*RALLY)
 
 
 class Group:
-    def __init__(self, node_id=None, count=None, vlat=None, vlng=None):
-        self.node    = node_id or random.choice(_node_ids)
-        self.count   = count if count is not None else random.randint(3, 5)
-        self.alive   = True
-        # Smooth visual position interpolates between nodes
+    def __init__(self, node_id=None, count=None):
+        self.node  = node_id if node_id is not None else random.choice(_node_ids)
+        self.count = count if count is not None else random.randint(3, 5)
+        self.alive = True
         n = G.nodes[self.node]
         self.lat, self.lng = n['lat'], n['lng']
+        self._path = []       # list of node ids to follow (rally mode)
         self._target_node = None
-        self._pick_next_node(wander=True)
+        self._pick_wander_target()
 
-    def _pick_next_node(self, wander=True):
+    def _pick_wander_target(self):
         neighbors = [n for n in G.neighbors(self.node) if n != self.node]
-        if not neighbors:
-            return
-        if wander:
-            self._target_node = random.choice(neighbors)
-        else:
-            def dist_to_rally(nid):
-                n = G.nodes[nid]
-                r = G.nodes[_RALLY_NODE]
-                return math.hypot((n['lat'] - r['lat']) * 111000,
-                                  (n['lng'] - r['lng']) * 74000)
-            self._target_node = min(neighbors, key=dist_to_rally)
+        self._target_node = random.choice(neighbors) if neighbors else self.node
+
+    def _plan_rally_path(self):
+        try:
+            self._path = nx.shortest_path(G, self.node, _RALLY_NODE, weight='weight')[1:]
+        except nx.NetworkXNoPath:
+            self._path = []
+        self._target_node = self._path.pop(0) if self._path else self.node
 
     @property
     def radius(self):
         return max(10, 8 + self.count * 1.6)
 
     def step(self, wander):
+        if wander:
+            if self._target_node is None or self._target_node == self.node:
+                self._pick_wander_target()
+        else:
+            # Plan or continue rally path
+            if not self._path and self._target_node == self.node:
+                self._plan_rally_path()
+
         if self._target_node is None or self._target_node == self.node:
-            self._pick_next_node(wander)
             return
 
         tn = G.nodes[self._target_node]
         tlat, tlng = tn['lat'], tn['lng']
-        dlat = tlat - self.lat  # degrees
-        dlng = tlng - self.lng  # degrees
+        dlat   = tlat - self.lat
+        dlng   = tlng - self.lng
         dist_m = math.hypot(dlat * METERS_PER_LAT, dlng * METERS_PER_LNG)
-        speed_m = (1.5 + self.count * 0.04) * METERS_PER_PX
+        speed_m = (1.5 + self.count * 0.04) * METERS_PER_PX * 3
 
         if dist_m <= speed_m:
             self.lat, self.lng = tlat, tlng
             self.node = self._target_node
-            self._pick_next_node(wander)
+            if wander:
+                self._pick_wander_target()
+            else:
+                self._target_node = self._path.pop(0) if self._path else self.node
         else:
-            # Move speed_m metres toward target, keeping result in degrees
             ratio = speed_m / dist_m
             self.lat += dlat * ratio
             self.lng += dlng * ratio
@@ -167,6 +173,9 @@ class Simulation:
         wander = self.phase == "wander"
         alive  = [g for g in self.groups if g.alive]
         for g in alive:
+            # Plan rally paths at the moment of phase switch
+            if not wander and g._path == [] and g._target_node == g.node:
+                g._plan_rally_path()
             g.step(wander)
 
         # Merge groups whose circles overlap (radius converted to metres)
