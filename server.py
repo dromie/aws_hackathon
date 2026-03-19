@@ -96,8 +96,46 @@ _VENUES = [
 # Capture radius in metres: groups within this distance count toward occupancy
 _VENUE_RADIUS_M = 80
 
+def compute_assignment(groups, venues_list):
+    if not groups or not venues_list:
+        return [], [0] * len(venues_list)
+    total_people   = sum(g.count for g in groups)
+    total_capacity = sum(v["capacity"] for v in venues_list)
+    DG = nx.DiGraph()
+    src, sink = "src", "sink"
+    DG.add_node(src,  demand=-total_people)
+    DG.add_node(sink, demand=min(total_people, total_capacity))
+    if total_people > total_capacity:
+        DG.add_node("overflow", demand=total_people - total_capacity)
+    for i in range(len(groups)):      DG.add_node(("g", i), demand=0)
+    for j in range(len(venues_list)): DG.add_node(("v", j), demand=0)
+    for i, g in enumerate(groups):
+        DG.add_edge(src, ("g", i), capacity=g.count, weight=0)
+    for i, g in enumerate(groups):
+        for j, v in enumerate(venues_list):
+            d = int(round(_dist_m(g.lat, g.lng, v["lat"], v["lng"])))
+            DG.add_edge(("g", i), ("v", j), capacity=g.count, weight=d)
+    for j, v in enumerate(venues_list):
+        DG.add_edge(("v", j), sink, capacity=v["capacity"], weight=0)
+    if total_people > total_capacity:
+        for i, g in enumerate(groups):
+            DG.add_edge(("g", i), "overflow", capacity=g.count, weight=1000000)
+    try:
+        flow = nx.min_cost_flow(DG)
+    except nx.NetworkXUnfeasible:
+        return [], [0] * len(venues_list)
+    assignments    = []
+    venue_occupied = [0] * len(venues_list)
+    for i in range(len(groups)):
+        for j in range(len(venues_list)):
+            f = flow.get(("g", i), {}).get(("v", j), 0)
+            if f > 0:
+                assignments.append({"groupIndex": i, "venueId": venues_list[j]["id"], "count": f})
+                venue_occupied[j] += f
+    return assignments, venue_occupied
 
-def venues_snapshot(groups):
+
+
     result = []
     for v in _VENUES:
         occupied = sum(
@@ -301,6 +339,15 @@ class Simulation:
     def snapshot(self):
         with self._lock:
             alive = [g for g in self.groups if g.alive]
+            assignments, venue_occupied = compute_assignment(alive, _VENUES)
+            venues = []
+            for idx, v in enumerate(_VENUES):
+                venues.append({
+                    "id": v["id"], "name": v["name"],
+                    "lat": v["lat"], "lng": v["lng"],
+                    "capacity": v["capacity"],
+                    "occupied": venue_occupied[idx],
+                })
             return {
                 "phase":         self.phase,
                 "running":       self._running,
@@ -309,7 +356,8 @@ class Simulation:
                 "total_spawned": self._total_spawned,
                 "arrived":       dict(self._arrived),
                 "groups":        [g.to_dict() for g in alive],
-                "venues":        venues_snapshot(alive),
+                "venues":        venues,
+                "assignments":   assignments,
             }
 
 
