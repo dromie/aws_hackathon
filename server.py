@@ -18,9 +18,9 @@ PORT = 8765
 BASE = os.path.dirname(os.path.abspath(__file__))
 
 # --- Simulation constants ---
-RALLY      = (47.4871, 19.0707)  # Nokia Skypark
+RALLY      = (47.4852547, 19.0713329)  # Práter utca / Szigony utca corner
 WANDER_SEC = 6
-NUM_GROUPS = 12
+NUM_GROUPS = 24
 TICK_SEC   = 0.033  # ~30 fps
 
 # Conversion factors (approximate at this latitude)
