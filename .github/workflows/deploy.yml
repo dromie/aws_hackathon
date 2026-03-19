@@ -11,9 +11,11 @@ env:
   ECS_SERVICE: crowd-map-svc
   TASK_FAMILY: crowd-map-task
   CONTAINER: crowd-map
+  MCP_CONTAINER: crowd-map-mcp
   PORT: "8765"
-  CPU: "512"
-  MEMORY: "1024"
+  MCP_PORT: "8000"
+  CPU: "1024"
+  MEMORY: "2048"
   ARCH: X86_64
 
 permissions:
@@ -74,20 +76,41 @@ jobs:
             --cpu "$CPU" --memory "$MEMORY" \
             --execution-role-arn "$ROLE_ARN" \
             --runtime-platform cpuArchitecture="$ARCH",operatingSystemFamily=LINUX \
-            --container-definitions '[{
-              "name": "'"$CONTAINER"'",
-              "image": "'"$IMAGE"'",
-              "portMappings": [{"containerPort": '"$PORT"', "protocol": "tcp"}],
-              "essential": true,
-              "logConfiguration": {
-                "logDriver": "awslogs",
-                "options": {
-                  "awslogs-group": "/ecs/'"$TASK_FAMILY"'",
-                  "awslogs-region": "'"$AWS_REGION"'",
-                  "awslogs-stream-prefix": "ecs"
+            --container-definitions '[
+              {
+                "name": "'"$CONTAINER"'",
+                "image": "'"$IMAGE"'",
+                "command": ["python", "server.py"],
+                "portMappings": [{"containerPort": '"$PORT"', "protocol": "tcp"}],
+                "essential": true,
+                "logConfiguration": {
+                  "logDriver": "awslogs",
+                  "options": {
+                    "awslogs-group": "/ecs/'"$TASK_FAMILY"'",
+                    "awslogs-region": "'"$AWS_REGION"'",
+                    "awslogs-stream-prefix": "ecs"
+                  }
+                }
+              },
+              {
+                "name": "'"$MCP_CONTAINER"'",
+                "image": "'"$IMAGE"'",
+                "command": ["python", "mcp_server.py"],
+                "portMappings": [{"containerPort": '"$MCP_PORT"', "protocol": "tcp"}],
+                "essential": false,
+                "environment": [
+                  {"name": "SIMULATION_URL", "value": "http://localhost:'"$PORT"'"}
+                ],
+                "logConfiguration": {
+                  "logDriver": "awslogs",
+                  "options": {
+                    "awslogs-group": "/ecs/'"$TASK_FAMILY"'",
+                    "awslogs-region": "'"$AWS_REGION"'",
+                    "awslogs-stream-prefix": "ecs"
+                  }
                 }
               }
-            }]'
+            ]'
 
       - name: Deploy to ECS
         run: |

@@ -15,9 +15,11 @@ CLUSTER   = "crowd-map-cluster"
 SERVICE   = "crowd-map-svc"
 TASK_FAM  = "crowd-map-task"
 CONTAINER = "crowd-map"
+MCP_CONTAINER = "crowd-map-mcp"
 PORT      = 8765
-CPU       = "512"
-MEMORY    = "1024"
+MCP_PORT  = 8000
+CPU       = "1024"
+MEMORY    = "2048"
 ARCH      = "X86_64"
 SG_NAME   = "crowd-map-sg"
 ROLE_NAME = "ecsTaskExecutionRole"
@@ -127,6 +129,9 @@ def deploy():
 
     # Task definition
     print("\n=== Task definition ===")
+    log_opts = {"awslogs-group": LOG_GROUP,
+                "awslogs-region": REGION,
+                "awslogs-stream-prefix": "ecs"}
     ecs.register_task_definition(
         family=TASK_FAM,
         networkMode="awsvpc",
@@ -134,17 +139,25 @@ def deploy():
         cpu=CPU, memory=MEMORY,
         executionRoleArn=role_arn,
         runtimePlatform={"cpuArchitecture": ARCH, "operatingSystemFamily": "LINUX"},
-        containerDefinitions=[{
-            "name": CONTAINER, "image": IMAGE,
-            "portMappings": [{"containerPort": PORT, "protocol": "tcp"}],
-            "essential": True,
-            "logConfiguration": {
-                "logDriver": "awslogs",
-                "options": {"awslogs-group": LOG_GROUP,
-                            "awslogs-region": REGION,
-                            "awslogs-stream-prefix": "ecs"}
-            }
-        }],
+        containerDefinitions=[
+            {
+                "name": CONTAINER, "image": IMAGE,
+                "command": ["python", "server.py"],
+                "portMappings": [{"containerPort": PORT, "protocol": "tcp"}],
+                "essential": True,
+                "logConfiguration": {"logDriver": "awslogs", "options": log_opts},
+            },
+            {
+                "name": MCP_CONTAINER, "image": IMAGE,
+                "command": ["python", "mcp_server.py"],
+                "portMappings": [{"containerPort": MCP_PORT, "protocol": "tcp"}],
+                "essential": False,
+                "environment": [
+                    {"name": "SIMULATION_URL", "value": f"http://localhost:{PORT}"}
+                ],
+                "logConfiguration": {"logDriver": "awslogs", "options": log_opts},
+            },
+        ],
         tags=ECS_TAGS)
     print(f"Registered: {TASK_FAM}")
 
