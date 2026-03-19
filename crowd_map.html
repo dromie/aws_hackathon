@@ -232,6 +232,41 @@ function draw(data) {
 
   if (data.venues) drawVenues(data.venues);
 
+  // Draw CDN service node icons next to their towers
+  if (cdnNodes.length && data.venues) {
+    const byId = {};
+    for (const v of data.venues) byId[v.id] = v;
+    for (const cdn of cdnNodes) {
+      const v = byId[cdn.towerId];
+      if (!v) continue;
+      const p = map.latLngToContainerPoint([v.lat, v.lng]);
+      const hr = Math.round(12 + Math.sqrt(v.capacity) * 0.85);
+      // Position: upper-right of hex
+      const ix = p.x + hr + 8, iy = p.y - hr + 2;
+      // Small server icon: rounded rect with lines
+      const w = 18, h = 14;
+      ctx.fillStyle = 'rgba(0,180,255,0.85)';
+      ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.roundRect(ix - w/2, iy - h/2, w, h, 3);
+      ctx.fill(); ctx.stroke();
+      // Two horizontal lines inside (server rack look)
+      ctx.beginPath();
+      ctx.moveTo(ix - w/2 + 3, iy - 2); ctx.lineTo(ix + w/2 - 3, iy - 2);
+      ctx.moveTo(ix - w/2 + 3, iy + 2); ctx.lineTo(ix + w/2 - 3, iy + 2);
+      ctx.strokeStyle = 'rgba(255,255,255,0.7)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      // CDN label
+      ctx.fillStyle = 'rgba(0,220,255,0.95)';
+      ctx.font = 'bold 7px Arial';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'top';
+      ctx.fillText(cdn.id, ix, iy + h/2 + 1);
+    }
+  }
+
   // Draw assignment edges: moving groups -> venue (sárga)
   // + arrived accumulation: rally point -> venue (narancs, vastagabb)
   if (data.venues) {
