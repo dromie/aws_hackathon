@@ -99,39 +99,84 @@ _VENUE_RADIUS_M = 80
 def compute_assignment(groups, venues_list):
     if not groups or not venues_list:
         return [], [0] * len(venues_list)
-    total_people   = sum(g.count for g in groups)
-    total_capacity = sum(v["capacity"] for v in venues_list)
+    # Aggregate groups into ~1km grid cells to keep flow graph small
+    from collections import defaultdict
+    GRID = 0.010
+    grid = defaultdict(lambda: {'count': 0, 'lat_sum': 0.0, 'lng_sum': 0.0})
+    for g in groups:
+        key = (round(g.lat / GRID) * GRID, round(g.lng / GRID) * GRID)
+        grid[key]['count']   += g.count
+        grid[key]['lat_sum'] += g.lat * g.count
+        grid[key]['lng_sum'] += g.lng * g.count
+    agg = [{'lat': v['lat_sum'] / v['count'],
+            'lng': v['lng_sum'] / v['count'],
+            'count': v['count']} for v in grid.values()]
+
+    total_people   = sum(a['count'] for a in agg)
+    total_capacity = sum(v['capacity'] for v in venues_list)
     DG = nx.DiGraph()
-    src, sink = "src", "sink"
+    src, sink = 'src', 'sink'
     DG.add_node(src,  demand=-total_people)
     DG.add_node(sink, demand=min(total_people, total_capacity))
     if total_people > total_capacity:
-        DG.add_node("overflow", demand=total_people - total_capacity)
-    for i in range(len(groups)):      DG.add_node(("g", i), demand=0)
-    for j in range(len(venues_list)): DG.add_node(("v", j), demand=0)
-    for i, g in enumerate(groups):
-        DG.add_edge(src, ("g", i), capacity=g.count, weight=0)
-    for i, g in enumerate(groups):
+        DG.add_node('overflow', demand=total_people - total_capacity)
+    for i in range(len(agg)):         DG.add_node(('g', i), demand=0)
+    for j in range(len(venues_list)): DG.add_node(('v', j), demand=0)
+    for i, a in enumerate(agg):
+        DG.add_edge(src, ('g', i), capacity=a['count'], weight=0)
+    for i, a in enumerate(agg):
         for j, v in enumerate(venues_list):
-            d = int(round(_dist_m(g.lat, g.lng, v["lat"], v["lng"])))
-            DG.add_edge(("g", i), ("v", j), capacity=g.count, weight=d)
+            d = int(round(_dist_m(a['lat'], a['lng'], v['lat'], v['lng'])))
+            DG.add_edge(('g', i), ('v', j), capacity=a['count'], weight=d)
     for j, v in enumerate(venues_list):
-        DG.add_edge(("v", j), sink, capacity=v["capacity"], weight=0)
+        DG.add_edge(('v', j), sink, capacity=v['capacity'], weight=0)
     if total_people > total_capacity:
-        for i, g in enumerate(groups):
-            DG.add_edge(("g", i), "overflow", capacity=g.count, weight=1000000)
+        for i in range(len(agg)):
+            DG.add_edge(('g', i), 'overflow', capacity=agg[i]['count'], weight=1000000)
     try:
         flow = nx.min_cost_flow(DG)
     except nx.NetworkXUnfeasible:
         return [], [0] * len(venues_list)
-    assignments    = []
+    # Map aggregated assignments back to original groups by position
+    # Build per-venue totals from flow
     venue_occupied = [0] * len(venues_list)
-    for i in range(len(groups)):
+    agg_assignments = []  # (agg_idx, venue_j, count)
+    for i in range(len(agg)):
         for j in range(len(venues_list)):
-            f = flow.get(("g", i), {}).get(("v", j), 0)
+            f = flow.get(('g', i), {}).get(('v', j), 0)
             if f > 0:
-                assignments.append({"groupIndex": i, "venueId": venues_list[j]["id"], "count": f})
+                agg_assignments.append((i, j, f))
                 venue_occupied[j] += f
+    # Map back to original groups: assign each group to the venue its grid cell was assigned to
+    # (proportionally if cell split across venues)
+    cell_venue = {}  # agg_idx -> list of (venue_j, fraction)
+    cell_total = defaultdict(int)
+    for i, j, f in agg_assignments:
+        cell_total[i] += f
+    for i, j, f in agg_assignments:
+        if i not in cell_venue:
+            cell_venue[i] = []
+        cell_venue[i].append((j, f / cell_total[i] if cell_total[i] else 1))
+    # Assign each original group to its grid cell's venue(s)
+    group_keys = []
+    for g in groups:
+        key = (round(g.lat / GRID) * GRID, round(g.lng / GRID) * GRID)
+        group_keys.append(key)
+    key_to_agg = {}
+    for i, key in enumerate([(round(g.lat/GRID)*GRID, round(g.lng/GRID)*GRID) for g in groups]):
+        pass
+    # Rebuild key->agg_idx mapping
+    key_list = list(grid.keys())
+    key_to_idx = {k: i for i, k in enumerate(key_list)}
+    assignments = []
+    for gi, g in enumerate(groups):
+        key = (round(g.lat / GRID) * GRID, round(g.lng / GRID) * GRID)
+        agg_idx = key_to_idx.get(key)
+        if agg_idx is None or agg_idx not in cell_venue:
+            continue
+        for vj, frac in cell_venue[agg_idx]:
+            count = max(1, round(g.count * frac))
+            assignments.append({'groupIndex': gi, 'venueId': venues_list[vj]['id'], 'count': count})
     return assignments, venue_occupied
 
 
@@ -267,9 +312,9 @@ class Simulation:
             time.sleep(max(0, TICK_SEC - (time.time() - t0)))
 
     def _run_assignment(self):
-        """Recompute assignment in background every 10 ticks, outside the sim lock."""
+        """Recompute assignment in background every 5 ticks, outside the sim lock."""
         while True:
-            time.sleep(TICK_SEC * 10)
+            time.sleep(TICK_SEC * 5)
             with self._lock:
                 alive = [g for g in self.groups if g.alive]
                 tick  = self._tick_count
