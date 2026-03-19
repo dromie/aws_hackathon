@@ -72,22 +72,15 @@ function groupColor(count) {
 // Venue fill color: green -> yellow -> red based on occupancy ratio
 function venueColor(occupied, capacity) {
   const t = Math.min(occupied / capacity, 1);
-  if (t < 0.5) {
-    // green -> yellow
-    const r = Math.round(255 * (t * 2));
-    return { fill: `rgba(${r},200,50,0.55)`, stroke: `rgba(${r},200,50,0.9)` };
-  } else {
-    // yellow -> red
-    const r = 255;
-    const g = Math.round(200 * (1 - (t - 0.5) * 2));
-    return { fill: `rgba(${r},${g},30,0.55)`, stroke: `rgba(${r},${g},30,0.9)` };
-  }
+  const r = Math.round(50 + 205 * t);
+  const g = Math.round(220 * (1 - t));
+  return { fill: `rgba(${r},${g},40,0.6)`, stroke: `rgba(${r},${g},40,1.0)` };
 }
 
 function drawHex(x, y, r) {
   ctx.beginPath();
   for (let i = 0; i < 6; i++) {
-    const a = Math.PI / 180 * (60 * i - 30);
+    const a = Math.PI / 3 * i - Math.PI / 6;
     i === 0 ? ctx.moveTo(x + r * Math.cos(a), y + r * Math.sin(a))
             : ctx.lineTo(x + r * Math.cos(a), y + r * Math.sin(a));
   }
@@ -96,44 +89,43 @@ function drawHex(x, y, r) {
 
 function drawVenues(venues) {
   for (const v of venues) {
-    const p   = map.latLngToContainerPoint([v.lat, v.lng]);
-    const r   = Math.round(10 + Math.sqrt(v.capacity) * 0.9);
-    const c   = venueColor(v.occupied, v.capacity);
+    const p     = map.latLngToContainerPoint([v.lat, v.lng]);
+    const r     = Math.round(12 + Math.sqrt(v.capacity) * 0.85);
+    const c     = venueColor(v.occupied, v.capacity);
     const ratio = Math.min(v.occupied / v.capacity, 1);
 
-    // Background hex
+    // Background hex (dark)
     drawHex(p.x, p.y, r);
-    ctx.fillStyle = c.fill;
+    ctx.fillStyle = 'rgba(20,20,20,0.7)';
     ctx.fill();
-    ctx.strokeStyle = c.stroke;
-    ctx.lineWidth = 2;
-    ctx.stroke();
 
-    // Occupancy fill: clip to hex, fill proportional slice from bottom
+    // Occupancy fill from bottom, clipped to hex shape
     if (ratio > 0) {
       ctx.save();
-      drawHex(p.x, p.y, r - 1);
+      drawHex(p.x, p.y, r);
       ctx.clip();
-      ctx.fillStyle = c.stroke.replace('0.9', '0.45');
-      ctx.fillRect(p.x - r, p.y + r - ratio * r * 2, r * 2, r * 2);
+      ctx.fillStyle = c.fill;
+      ctx.fillRect(p.x - r, p.y + r * (1 - ratio * 2), r * 2, r * 2 * ratio);
       ctx.restore();
     }
 
-    // Redraw hex border on top
+    // Hex border
     drawHex(p.x, p.y, r);
     ctx.strokeStyle = c.stroke;
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 2.5;
     ctx.stroke();
 
-    // Labels
+    // occupancy / capacity text
     ctx.fillStyle = 'white';
-    ctx.font = 'bold 10px Arial';
+    ctx.font = 'bold 11px Arial';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(`${v.occupied}/${v.capacity}`, p.x, p.y);
+
+    // venue name below hex
     ctx.font = '9px Arial';
-    ctx.fillStyle = 'rgba(255,255,255,0.85)';
-    ctx.fillText(v.name, p.x, p.y + r + 9);
+    ctx.fillStyle = 'rgba(255,255,200,0.95)';
+    ctx.fillText(v.name, p.x, p.y + r + 10);
   }
 }
 
