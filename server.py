@@ -24,6 +24,10 @@ WANDER_SEC = 6
 NUM_GROUPS = 12
 TICK_SEC   = 0.033  # ~30 fps
 
+# At zoom 15, 1 pixel ~ 3.2 metres; these convert pixel distances to lat/lng degrees
+PX_TO_LAT = 0.000029
+PX_TO_LNG = 0.000043
+
 
 def _rand_latlng():
     return (
@@ -37,8 +41,8 @@ class Group:
         self.lat   = lat   if lat   is not None else _rand_latlng()[0]
         self.lng   = lng   if lng   is not None else _rand_latlng()[1]
         self.count = count if count is not None else random.randint(3, 5)
-        self.vlat  = vlat  if vlat  is not None else (random.random() - 0.5) * 0.00012
-        self.vlng  = vlng  if vlng  is not None else (random.random() - 0.5) * 0.00016
+        self.vlat  = vlat  if vlat  is not None else (random.random() - 0.5) * PX_TO_LAT * 1.5
+        self.vlng  = vlng  if vlng  is not None else (random.random() - 0.5) * PX_TO_LNG * 1.5
         self.alive = True
 
     @property
@@ -47,8 +51,8 @@ class Group:
 
     def wander(self):
         if random.random() < 0.03:
-            self.vlat = (random.random() - 0.5) * 0.00012
-            self.vlng = (random.random() - 0.5) * 0.00016
+            self.vlat = (random.random() - 0.5) * PX_TO_LAT * 1.5
+            self.vlng = (random.random() - 0.5) * PX_TO_LNG * 1.5
         self.lat += self.vlat
         self.lng += self.vlng
         if self.lat <= BOUNDS_LAT[0] or self.lat >= BOUNDS_LAT[1]: self.vlat *= -1
@@ -60,10 +64,11 @@ class Group:
         dlat = RALLY[0] - self.lat
         dlng = RALLY[1] - self.lng
         dist = math.hypot(dlat, dlng)
-        if dist > 0.00005:
-            speed = 0.00008 + self.count * 0.000002
-            self.lat += dlat / dist * speed
-            self.lng += dlng / dist * speed
+        if dist > PX_TO_LAT * 3:
+            # 2 px/tick base speed, slightly faster for larger groups
+            speed_px = 2.0 + self.count * 0.05
+            self.lat += dlat / dist * PX_TO_LAT * speed_px
+            self.lng += dlng / dist * PX_TO_LNG * speed_px
 
     def to_dict(self):
         return {
@@ -115,16 +120,16 @@ class Simulation:
         for g in alive:
             g.wander() if self.phase == "wander" else g.rally()
 
-        # Merge groups that overlap (distance in metres approximation)
+        # Merge groups whose circles overlap in pixel space
         alive = [g for g in self.groups if g.alive]
         for i in range(len(alive)):
             for j in range(i + 1, len(alive)):
                 a, b = alive[i], alive[j]
                 if not b.alive:
                     continue
-                dy = (a.lat - b.lat) * 111000
-                dx = (a.lng - b.lng) * 74000  # approx at this latitude
-                if math.hypot(dx, dy) < (a.radius + b.radius) * 0.00015 * 74000:
+                dpx = (a.lng - b.lng) / PX_TO_LNG
+                dpy = (a.lat - b.lat) / PX_TO_LAT
+                if math.hypot(dpx, dpy) < a.radius + b.radius:
                     a.count += b.count
                     b.alive = False
 
