@@ -230,16 +230,19 @@ class Group:
 
 class Simulation:
     def __init__(self):
-        self._lock          = threading.Lock()
-        self._running       = False
-        self._tick_count    = 0
-        self._history       = []
-        self._total_spawned = 0
-        self._arrived       = {}
-        self._num_groups    = DEFAULT_GROUPS
-        self._num_people    = DEFAULT_PEOPLE
+        self._lock           = threading.Lock()
+        self._running        = False
+        self._tick_count     = 0
+        self._history        = []
+        self._total_spawned  = 0
+        self._arrived        = {}
+        self._num_groups     = DEFAULT_GROUPS
+        self._num_people     = DEFAULT_PEOPLE
+        self._last_assignment = ([], [])
+        self._assignment_tick = -1
         self._init_groups()
         threading.Thread(target=self._run, daemon=True).start()
+        threading.Thread(target=self._run_assignment, daemon=True).start()
 
     def _init_groups(self):
         per_group = max(1, self._num_people // self._num_groups)
@@ -262,6 +265,20 @@ class Simulation:
                 if self._running:
                     self._step()
             time.sleep(max(0, TICK_SEC - (time.time() - t0)))
+
+    def _run_assignment(self):
+        """Recompute assignment in background every 10 ticks, outside the sim lock."""
+        while True:
+            time.sleep(TICK_SEC * 10)
+            with self._lock:
+                alive = [g for g in self.groups if g.alive]
+                tick  = self._tick_count
+            if tick == self._assignment_tick:
+                continue
+            result = compute_assignment(alive, _VENUES)
+            with self._lock:
+                self._last_assignment = result
+                self._assignment_tick = tick
 
     def _step(self):
         if self.phase == "wander" and self._tick_count >= int(WANDER_SEC / TICK_SEC):
@@ -339,14 +356,15 @@ class Simulation:
     def snapshot(self):
         with self._lock:
             alive = [g for g in self.groups if g.alive]
-            assignments, venue_occupied = compute_assignment(alive, _VENUES)
+            assignments, venue_occupied = self._last_assignment
             venues = []
             for idx, v in enumerate(_VENUES):
+                occ = venue_occupied[idx] if idx < len(venue_occupied) else 0
                 venues.append({
                     "id": v["id"], "name": v["name"],
                     "lat": v["lat"], "lng": v["lng"],
                     "capacity": v["capacity"],
-                    "occupied": venue_occupied[idx],
+                    "occupied": occ,
                 })
             return {
                 "phase":         self.phase,
