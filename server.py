@@ -2,7 +2,7 @@
 """
 Tile server:      http://localhost:8765/{z}/{x}/{y}.png
 Simulation API:   http://localhost:8765/api/groups
-Control API:      http://localhost:8765/api/control  (POST {action: start|stop|step|rewind})
+Control API:      http://localhost:8765/api/control  (POST {action: start|stop|step|rewind|reset})
 Static files:     http://localhost:8765/
 """
 import http.server
@@ -12,63 +12,110 @@ import threading
 import time
 import math
 import random
+import networkx as nx
 
 PORT = 8765
 BASE = os.path.dirname(os.path.abspath(__file__))
 
 # --- Simulation constants ---
 RALLY      = (47.4871, 19.0707)  # Nokia Skypark
-BOUNDS_LAT = (47.479, 47.496)
-BOUNDS_LNG = (19.040, 19.100)
 WANDER_SEC = 6
 NUM_GROUPS = 12
 TICK_SEC   = 0.033  # ~30 fps
 
-# At zoom 15, 1 pixel ~ 3.2 metres; these convert pixel distances to lat/lng degrees
+# At zoom 15, 1 pixel ~ 3.2 metres
 PX_TO_LAT = 0.000029
 PX_TO_LNG = 0.000043
 
 
-def _rand_latlng():
-    return (
-        BOUNDS_LAT[0] + random.random() * (BOUNDS_LAT[1] - BOUNDS_LAT[0]),
-        BOUNDS_LNG[0] + random.random() * (BOUNDS_LNG[1] - BOUNDS_LNG[0]),
-    )
+# --- Build road graph ---
+def _build_graph():
+    path = os.path.join(BASE, 'road_network.json')
+    with open(path) as f:
+        data = json.load(f)
+    G = nx.Graph()
+    for lat, lng, nid in data['nodes']:
+        G.add_node(nid, lat=lat, lng=lng)
+    for u, v in data['edges']:
+        if u in G and v in G:
+            dlat = G.nodes[u]['lat'] - G.nodes[v]['lat']
+            dlng = G.nodes[u]['lng'] - G.nodes[v]['lng']
+            G.add_edge(u, v, weight=math.hypot(dlat * 111000, dlng * 74000))
+    return G
+
+
+G = _build_graph()
+_node_ids = list(G.nodes())
+_node_coords = [(G.nodes[n]['lat'], G.nodes[n]['lng'], n) for n in _node_ids]
+
+
+def _nearest_node(lat, lng):
+    """Return the node id closest to the given lat/lng."""
+    best, best_d = None, float('inf')
+    for nlat, nlng, nid in _node_coords:
+        d = math.hypot((nlat - lat) * 111000, (nlng - lng) * 74000)
+        if d < best_d:
+            best_d, best = d, nid
+    return best
+
+
+# Pre-compute rally node once
+_RALLY_NODE = _nearest_node(*RALLY)
 
 
 class Group:
-    def __init__(self, lat=None, lng=None, count=None, vlat=None, vlng=None):
-        self.lat   = lat   if lat   is not None else _rand_latlng()[0]
-        self.lng   = lng   if lng   is not None else _rand_latlng()[1]
-        self.count = count if count is not None else random.randint(3, 5)
-        self.vlat  = vlat  if vlat  is not None else (random.random() - 0.5) * PX_TO_LAT * 1.5
-        self.vlng  = vlng  if vlng  is not None else (random.random() - 0.5) * PX_TO_LNG * 1.5
-        self.alive = True
+    def __init__(self, node_id=None, count=None, vlat=None, vlng=None):
+        self.node    = node_id or random.choice(_node_ids)
+        self.count   = count if count is not None else random.randint(3, 5)
+        self.alive   = True
+        # Smooth visual position interpolates between nodes
+        n = G.nodes[self.node]
+        self.lat, self.lng = n['lat'], n['lng']
+        self._target_node = None
+        self._pick_next_node(wander=True)
+
+    def _pick_next_node(self, wander=True):
+        neighbors = list(G.neighbors(self.node))
+        if not neighbors:
+            return
+        if wander:
+            self._target_node = random.choice(neighbors)
+        else:
+            # Move toward rally: pick neighbor that minimises distance to rally node
+            def dist_to_rally(nid):
+                n = G.nodes[nid]
+                r = G.nodes[_RALLY_NODE]
+                return math.hypot((n['lat'] - r['lat']) * 111000,
+                                  (n['lng'] - r['lng']) * 74000)
+            self._target_node = min(neighbors, key=dist_to_rally)
 
     @property
     def radius(self):
         return max(10, 8 + self.count * 1.6)
 
-    def wander(self):
-        if random.random() < 0.03:
-            self.vlat = (random.random() - 0.5) * PX_TO_LAT * 1.5
-            self.vlng = (random.random() - 0.5) * PX_TO_LNG * 1.5
-        self.lat += self.vlat
-        self.lng += self.vlng
-        if self.lat <= BOUNDS_LAT[0] or self.lat >= BOUNDS_LAT[1]: self.vlat *= -1
-        if self.lng <= BOUNDS_LNG[0] or self.lng >= BOUNDS_LNG[1]: self.vlng *= -1
-        self.lat = max(BOUNDS_LAT[0], min(BOUNDS_LAT[1], self.lat))
-        self.lng = max(BOUNDS_LNG[0], min(BOUNDS_LNG[1], self.lng))
+    def step(self, wander):
+        if self._target_node is None:
+            self._pick_next_node(wander)
+            return
 
-    def rally(self):
-        dlat = RALLY[0] - self.lat
-        dlng = RALLY[1] - self.lng
-        dist = math.hypot(dlat, dlng)
-        if dist > PX_TO_LAT * 3:
-            # 2 px/tick base speed, slightly faster for larger groups
-            speed_px = 2.0 + self.count * 0.05
-            self.lat += dlat / dist * PX_TO_LAT * speed_px
-            self.lng += dlng / dist * PX_TO_LNG * speed_px
+        tn = G.nodes[self._target_node]
+        tlat, tlng = tn['lat'], tn['lng']
+        dlat, dlng = tlat - self.lat, tlng - self.lng
+        dist_px = math.hypot(dlat / PX_TO_LAT, dlng / PX_TO_LNG)
+
+        speed_px = 1.5 + self.count * 0.04
+        if dist_px <= speed_px:
+            # Arrived at target node
+            self.lat, self.lng = tlat, tlng
+            self.node = self._target_node
+            if wander and random.random() < 0.3:
+                # Occasionally stay put for a moment
+                self._target_node = self.node
+            else:
+                self._pick_next_node(wander)
+        else:
+            self.lat += (dlat / dist_px) * speed_px * PX_TO_LAT
+            self.lng += (dlng / dist_px) * speed_px * PX_TO_LNG
 
     def to_dict(self):
         return {
@@ -76,28 +123,28 @@ class Group:
             "lng":    round(self.lng, 6),
             "count":  self.count,
             "radius": round(self.radius, 1),
-            "vlat":   self.vlat,
-            "vlng":   self.vlng,
+            "node":   self.node,
         }
 
     @staticmethod
     def from_dict(d):
-        g = Group(d["lat"], d["lng"], d["count"], d["vlat"], d["vlng"])
+        g = Group(node_id=d['node'], count=d['count'])
+        g.lat, g.lng = d['lat'], d['lng']
         return g
 
 
 class Simulation:
     def __init__(self):
-        self._lock    = threading.Lock()
-        self._running = False
+        self._lock       = threading.Lock()
+        self._running    = False
         self._tick_count = 0
-        self._history = []          # list of snapshots for rewind
+        self._history    = []
         self._init_groups()
         threading.Thread(target=self._run, daemon=True).start()
 
     def _init_groups(self):
-        self.groups = [Group() for _ in range(NUM_GROUPS)]
-        self.phase  = "wander"
+        self.groups      = [Group() for _ in range(NUM_GROUPS)]
+        self.phase       = "wander"
         self._tick_count = 0
         self._history.clear()
         self._save_history()
@@ -108,17 +155,16 @@ class Simulation:
             with self._lock:
                 if self._running:
                     self._step()
-            elapsed = time.time() - t0
-            time.sleep(max(0, TICK_SEC - elapsed))
+            time.sleep(max(0, TICK_SEC - (time.time() - t0)))
 
     def _step(self):
-        # Advance phase after WANDER_SEC worth of ticks
         if self.phase == "wander" and self._tick_count >= int(WANDER_SEC / TICK_SEC):
             self.phase = "rally"
 
-        alive = [g for g in self.groups if g.alive]
+        wander = self.phase == "wander"
+        alive  = [g for g in self.groups if g.alive]
         for g in alive:
-            g.wander() if self.phase == "wander" else g.rally()
+            g.step(wander)
 
         # Merge groups whose circles overlap in pixel space
         alive = [g for g in self.groups if g.alive]
@@ -131,7 +177,7 @@ class Simulation:
                 dpy = (a.lat - b.lat) / PX_TO_LAT
                 if math.hypot(dpx, dpy) < a.radius + b.radius:
                     a.count += b.count
-                    b.alive = False
+                    b.alive  = False
 
         self._tick_count += 1
         self._save_history()
@@ -149,26 +195,21 @@ class Simulation:
     def _restore(self, snapshot):
         self.phase       = snapshot["phase"]
         self._tick_count = snapshot["tick"]
-        self.groups = [Group.from_dict(d) for d in snapshot["groups"]]
+        self.groups      = [Group.from_dict(d) for d in snapshot["groups"]]
 
-    # --- Public controls ---
     def start(self):
-        with self._lock:
-            self._running = True
+        with self._lock: self._running = True
 
     def stop(self):
-        with self._lock:
-            self._running = False
+        with self._lock: self._running = False
 
     def step(self):
-        with self._lock:
-            self._step()
+        with self._lock: self._step()
 
     def rewind(self):
         with self._lock:
             self._running = False
             if len(self._history) > 1:
-                # Step back 30 frames (~1 second)
                 target = max(0, len(self._history) - 31)
                 self._history = self._history[:target + 1]
                 self._restore(self._history[-1])
@@ -190,7 +231,9 @@ class Simulation:
             }
 
 
+print("Building road graph...")
 sim = Simulation()
+print("Ready.")
 
 
 class Handler(http.server.SimpleHTTPRequestHandler):
@@ -237,7 +280,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             body = json.dumps(sim.snapshot()).encode()
             self.send_response(200)
             self.send_header('Content-Type', 'application/json')
-            self.send_header('Access-Control-Allow-Origin', '*')
+            self.send_header('Access-Control-Allow-Origin', '*'  )
             self.end_headers()
             self.wfile.write(body)
             return
