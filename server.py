@@ -87,14 +87,79 @@ _VENUES = [
 _VENUE_RADIUS_M = 80
 
 
-def venues_snapshot(groups):
-    """Compute occupancy for each venue based on current group positions."""
+def compute_assignment(groups, venues_list):
+    """
+    Assign each person (from groups) to a tower via min-cost flow.
+    Groups supply count_i units; towers have capacity_j. Cost = distance.
+    Returns (assignments, venue_occupied): assignments is list of
+    { groupIndex, venueId, count } for each (group, tower) with count > 0;
+    venue_occupied is list of per-venue assigned counts (same order as venues_list).
+    """
+    if not groups or not venues_list:
+        return [], [0] * len(venues_list)
+
+    total_people = sum(g.count for g in groups)
+    total_capacity = sum(v["capacity"] for v in venues_list)
+
+    G = nx.DiGraph()
+    src, sink, overflow = "src", "sink", "overflow"
+
+    # Nodes: source, sink, overflow (if needed), one per group, one per venue
+    G.add_node(src, demand=-total_people)
+    G.add_node(sink, demand=min(total_people, total_capacity))
+    if total_people > total_capacity:
+        G.add_node(overflow, demand=total_people - total_capacity)
+
+    for i in range(len(groups)):
+        G.add_node(("g", i), demand=0)
+    for j in range(len(venues_list)):
+        G.add_node(("v", j), demand=0)
+
+    # Edges: source -> groups; groups -> towers; towers -> sink; groups -> overflow
+    for i, g in enumerate(groups):
+        G.add_edge(src, ("g", i), capacity=g.count, weight=0)
+    for i, g in enumerate(groups):
+        for j, v in enumerate(venues_list):
+            d = int(round(_dist_m(g.lat, g.lng, v["lat"], v["lng"])))
+            G.add_edge(("g", i), ("v", j), capacity=g.count, weight=d)
+    for j, v in enumerate(venues_list):
+        G.add_edge(("v", j), sink, capacity=v["capacity"], weight=0)
+    if total_people > total_capacity:
+        for i, g in enumerate(groups):
+            G.add_edge(("g", i), overflow, capacity=g.count, weight=1000000)
+
+    try:
+        flow = nx.min_cost_flow(G)
+    except nx.NetworkXUnfeasible:
+        return [], [0] * len(venues_list)
+
+    assignments = []
+    venue_occupied = [0] * len(venues_list)
+    for i in range(len(groups)):
+        for j in range(len(venues_list)):
+            f = flow.get(("g", i), {}).get(("v", j), 0)
+            if f > 0:
+                assignments.append({"groupIndex": i, "venueId": venues_list[j]["id"], "count": f})
+                venue_occupied[j] += f
+
+    return assignments, venue_occupied
+
+
+def venues_snapshot(groups, venue_occupied=None):
+    """
+    Build venue list with id, name, lat, lng, capacity, occupied.
+    If venue_occupied is provided (from compute_assignment), use it; else
+    compute occupancy by distance (groups within _VENUE_RADIUS_M).
+    """
     result = []
-    for v in _VENUES:
-        occupied = sum(
-            g.count for g in groups
-            if g.alive and _dist_m(g.lat, g.lng, v["lat"], v["lng"]) <= _VENUE_RADIUS_M
-        )
+    for idx, v in enumerate(_VENUES):
+        if venue_occupied is not None and idx < len(venue_occupied):
+            occupied = venue_occupied[idx]
+        else:
+            occupied = sum(
+                g.count for g in groups
+                if g.alive and _dist_m(g.lat, g.lng, v["lat"], v["lng"]) <= _VENUE_RADIUS_M
+            )
         result.append({
             "id":       v["id"],
             "name":     v["name"],
@@ -269,13 +334,15 @@ class Simulation:
     def snapshot(self):
         with self._lock:
             alive = [g for g in self.groups if g.alive]
+            assignments, venue_occupied = compute_assignment(alive, _VENUES)
             return {
-                "phase":   self.phase,
-                "running": self._running,
-                "tick":    self._tick_count,
-                "total":   sum(g.count for g in alive),
-                "groups":  [g.to_dict() for g in alive],
-                "venues":  venues_snapshot(alive),
+                "phase":        self.phase,
+                "running":      self._running,
+                "tick":        self._tick_count,
+                "total":       sum(g.count for g in alive),
+                "groups":      [g.to_dict() for g in alive],
+                "venues":      venues_snapshot(alive, venue_occupied),
+                "assignments": assignments,
             }
 
 

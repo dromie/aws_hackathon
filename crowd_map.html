@@ -148,6 +148,26 @@ function draw(data) {
     ctx.textBaseline = 'middle';
     ctx.fillText(g.count, p.x, p.y);
   }
+  // Draw assignment edges (group -> tower), thickness and opacity by count
+  if (data.assignments && data.groups && data.venues) {
+    const maxCount = Math.max(1, ...data.assignments.map(a => a.count));
+    for (const a of data.assignments) {
+      const g = data.groups[a.groupIndex];
+      const v = data.venues.find(vn => vn.id === a.venueId);
+      if (!g || !v) continue;
+      const pFrom = map.latLngToContainerPoint([g.lat, g.lng]);
+      const pTo = map.latLngToContainerPoint([v.lat, v.lng]);
+      const t = Math.min(a.count / maxCount, 1);
+      const lineWidth = Math.max(1, 0.5 + t * 4);
+      const alpha = 0.35 + 0.45 * t;
+      ctx.beginPath();
+      ctx.moveTo(pFrom.x, pFrom.y);
+      ctx.lineTo(pTo.x, pTo.y);
+      ctx.strokeStyle = `rgba(100,180,255,${alpha})`;
+      ctx.lineWidth = lineWidth;
+      ctx.stroke();
+    }
+  }
   // Draw venue hexagons on top
   if (data.venues) drawVenues(data.venues);
 }
