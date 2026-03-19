@@ -193,20 +193,19 @@ function draw(data) {
   // Draw still-moving groups
   for (const g of data.groups) {
     const p = map.latLngToContainerPoint([g.lat, g.lng]);
-    const r = g.radius;
     const isNokia = g.rally_node === NOKIA_RALLY_NODE;
+    const t = Math.min(g.count / 60, 1);
+    const r = isNokia
+      ? Math.round(40 + 215 * t)
+      : Math.round(0  +  60 * t);
+    const gr = isNokia
+      ? Math.round(120 + 80 * t)
+      : Math.round(80 + 120 * t);
+    const b = isNokia ? 220 : 255;
     ctx.beginPath();
-    ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
-    ctx.fillStyle = isNokia ? 'rgba(0,120,200,0.82)' : 'rgba(0,60,200,0.82)';
+    ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(${r},${gr},${b},0.9)`;
     ctx.fill();
-    ctx.strokeStyle = 'rgba(255,255,255,0.7)';
-    ctx.lineWidth = 1.5;
-    ctx.stroke();
-    ctx.fillStyle = 'white';
-    ctx.font = `bold ${Math.max(10, Math.min(14, 8 + g.count * 0.2))}px Arial`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(g.count, p.x, p.y);
   }
 
   if (data.venues) drawVenues(data.venues);
