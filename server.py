@@ -250,7 +250,7 @@ class Simulation:
                 a, b = alive[i], alive[j]
                 if not b.alive:
                     continue
-                if _dist_m(a.lat, a.lng, b.lat, b.lng) < (a.radius + b.radius) * METERS_PER_PX:
+                if _dist_m(a.lat, a.lng, b.lat, b.lng) < 15:
                     a.count += b.count
                     b.alive  = False
 
