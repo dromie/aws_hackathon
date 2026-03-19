@@ -1,4 +1,4 @@
-FROM python:3.11-slim
+FROM --platform=linux/arm64 python:3.11-slim
 WORKDIR /app
 RUN pip install --no-cache-dir networkx
 COPY server.py crowd_map.html road_network.json road_graph.json ./
