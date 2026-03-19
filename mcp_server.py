@@ -42,16 +42,11 @@ def get_assignment_person_level() -> list[dict]:
     """
     Return the current cell-tower assignment at person level (one entry per person).
     No input: uses the live simulation state.
-    Each item has groupIndex (int) and venueId (int). Order reflects the expansion
-    of group-level counts (e.g. group 0 → venue 2 repeated count times, then next pair).
+    Each item has personId (int, unique ID assigned when the person was created in the simulation)
+    and venueId (int). Person IDs are stable across timesteps until groups merge or simulation resets.
     """
     data = _fetch_snapshot()
-    assignments = data.get("assignments", [])
-    out = []
-    for a in assignments:
-        for _ in range(a.get("count", 0)):
-            out.append({"groupIndex": a["groupIndex"], "venueId": a["venueId"]})
-    return out
+    return data.get("person_assignments", [])
 
 
 if __name__ == "__main__":

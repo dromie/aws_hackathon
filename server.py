@@ -97,60 +97,74 @@ _VENUE_RADIUS_M = 80
 
 def compute_assignment(groups, venues_list):
     """
-    Assign each person (from groups) to a tower via min-cost flow.
-    Groups supply count_i units; towers have capacity_j. Cost = distance.
-    Returns (assignments, venue_occupied): assignments is list of
-    { groupIndex, venueId, count } for each (group, tower) with count > 0;
-    venue_occupied is list of per-venue assigned counts (same order as venues_list).
+    Assign each person to a tower via min-cost flow (one node per person).
+    Returns (group_assignments, venue_occupied, person_assignments):
+    - group_assignments: list of { groupIndex, venueId, count } for visualization;
+    - venue_occupied: per-venue assigned counts (same order as venues_list);
+    - person_assignments: list of { personId, venueId } with real person IDs.
     """
     if not groups or not venues_list:
-        return [], [0] * len(venues_list)
+        return [], [0] * len(venues_list), []
 
-    total_people = sum(g.count for g in groups)
+    # (person_id, lat, lng, group_index) for every person in alive groups
+    persons = []
+    for i, g in enumerate(groups):
+        for pid in g.member_ids:
+            persons.append((pid, g.lat, g.lng, i))
+
+    total_people = len(persons)
     total_capacity = sum(v["capacity"] for v in venues_list)
 
     G = nx.DiGraph()
     src, sink, overflow = "src", "sink", "overflow"
 
-    # Nodes: source, sink, overflow (if needed), one per group, one per venue
     G.add_node(src, demand=-total_people)
     G.add_node(sink, demand=min(total_people, total_capacity))
     if total_people > total_capacity:
         G.add_node(overflow, demand=total_people - total_capacity)
 
-    for i in range(len(groups)):
-        G.add_node(("g", i), demand=0)
+    for pid, lat, lng, _ in persons:
+        G.add_node(("p", pid), demand=0)
     for j in range(len(venues_list)):
         G.add_node(("v", j), demand=0)
 
-    # Edges: source -> groups; groups -> towers; towers -> sink; groups -> overflow
-    for i, g in enumerate(groups):
-        G.add_edge(src, ("g", i), capacity=g.count, weight=0)
-    for i, g in enumerate(groups):
+    for pid, lat, lng, _ in persons:
+        G.add_edge(src, ("p", pid), capacity=1, weight=0)
+    for idx, (pid, lat, lng, _) in enumerate(persons):
         for j, v in enumerate(venues_list):
-            d = int(round(_dist_m(g.lat, g.lng, v["lat"], v["lng"])))
-            G.add_edge(("g", i), ("v", j), capacity=g.count, weight=d)
+            d = int(round(_dist_m(lat, lng, v["lat"], v["lng"])))
+            G.add_edge(("p", pid), ("v", j), capacity=1, weight=d)
     for j, v in enumerate(venues_list):
         G.add_edge(("v", j), sink, capacity=v["capacity"], weight=0)
     if total_people > total_capacity:
-        for i, g in enumerate(groups):
-            G.add_edge(("g", i), overflow, capacity=g.count, weight=1000000)
+        for pid, _, _, _ in persons:
+            G.add_edge(("p", pid), overflow, capacity=1, weight=1000000)
 
     try:
         flow = nx.min_cost_flow(G)
     except nx.NetworkXUnfeasible:
-        return [], [0] * len(venues_list)
+        return [], [0] * len(venues_list), []
 
-    assignments = []
     venue_occupied = [0] * len(venues_list)
-    for i in range(len(groups)):
-        for j in range(len(venues_list)):
-            f = flow.get(("g", i), {}).get(("v", j), 0)
-            if f > 0:
-                assignments.append({"groupIndex": i, "venueId": venues_list[j]["id"], "count": f})
-                venue_occupied[j] += f
+    person_assignments = []
+    group_counts = {}  # (group_index, venue_id) -> count
 
-    return assignments, venue_occupied
+    for pid, _, _, gi in persons:
+        for j in range(len(venues_list)):
+            f = flow.get(("p", pid), {}).get(("v", j), 0)
+            if f > 0:
+                vid = venues_list[j]["id"]
+                venue_occupied[j] += 1
+                person_assignments.append({"personId": pid, "venueId": vid})
+                group_counts[(gi, vid)] = group_counts.get((gi, vid), 0) + 1
+                break
+
+    group_assignments = [
+        {"groupIndex": gi, "venueId": vid, "count": c}
+        for (gi, vid), c in group_counts.items()
+    ]
+
+    return group_assignments, venue_occupied, person_assignments
 
 
 def venues_snapshot(groups, venue_occupied=None):
@@ -182,7 +196,8 @@ def venues_snapshot(groups, venue_occupied=None):
 class Group:
     def __init__(self, node_id=None, count=None, rally_node=None):
         self.node        = node_id if node_id is not None else random.choice(_node_ids)
-        self.count       = count if count is not None else random.randint(3, 5)
+        self._initial_count = count if count is not None else random.randint(3, 5)
+        self.member_ids  = []  # person IDs belonging to this group; set by Simulation._init_groups or from_dict
         self.rally_node  = rally_node if rally_node is not None else (_RALLY_NODES[0] if random.random() < 0.65 else _RALLY_NODES[1])
         self.alive       = True
         n = G.nodes[self.node]
@@ -190,6 +205,10 @@ class Group:
         self._path        = []
         self._target_node = None
         self._pick_wander_target()
+
+    @property
+    def count(self):
+        return len(self.member_ids) if self.member_ids else self._initial_count
 
     def _pick_wander_target(self):
         neighbors = [n for n in G.neighbors(self.node) if n != self.node]
@@ -245,26 +264,35 @@ class Group:
             "radius":     round(self.radius, 1),
             "node":       self.node,
             "rally_node": self.rally_node,
+            "member_ids": self.member_ids,
         }
 
     @staticmethod
     def from_dict(d):
-        g = Group(node_id=d['node'], count=d['count'], rally_node=d['rally_node'])
+        member_ids = d.get("member_ids", [])
+        g = Group(node_id=d['node'], count=len(member_ids) if member_ids else d.get('count', 0), rally_node=d['rally_node'])
+        g.member_ids = member_ids
         g.lat, g.lng = d['lat'], d['lng']
         return g
 
 
 class Simulation:
     def __init__(self):
-        self._lock       = threading.Lock()
-        self._running    = False
-        self._tick_count = 0
-        self._history    = []
+        self._lock          = threading.Lock()
+        self._running       = False
+        self._tick_count    = 0
+        self._history      = []
+        self._next_person_id = 0
         self._init_groups()
         threading.Thread(target=self._run, daemon=True).start()
 
     def _init_groups(self):
+        self._next_person_id = 0
         self.groups      = [Group() for _ in range(NUM_GROUPS)]
+        for g in self.groups:
+            n = g.count  # uses _initial_count when member_ids is empty
+            g.member_ids = [self._next_person_id + i for i in range(n)]
+            self._next_person_id += n
         self.phase       = "wander"
         self._tick_count = 0
         self._history.clear()
@@ -298,8 +326,9 @@ class Simulation:
                 if not b.alive:
                     continue
                 if _dist_m(a.lat, a.lng, b.lat, b.lng) < (a.radius + b.radius) * METERS_PER_PX:
-                    a.count += b.count
-                    b.alive  = False
+                    a.member_ids.extend(b.member_ids)
+                    b.member_ids.clear()
+                    b.alive = False
 
         self._tick_count += 1
         self._save_history()
@@ -317,7 +346,21 @@ class Simulation:
     def _restore(self, snapshot):
         self.phase       = snapshot["phase"]
         self._tick_count = snapshot["tick"]
-        self.groups      = [Group.from_dict(d) for d in snapshot["groups"]]
+        # Restore groups; if member_ids missing (old snapshot), assign synthetic IDs for backward compat
+        next_id = 0
+        groups = []
+        for d in snapshot["groups"]:
+            mids = d.get("member_ids")
+            if mids is None:
+                c = d.get("count", 0)
+                mids = list(range(next_id, next_id + c))
+                next_id += c
+                d = {**d, "member_ids": mids}
+            else:
+                next_id = max(next_id, max(mids, default=0) + 1)
+            groups.append(Group.from_dict(d))
+        self.groups = groups
+        self._next_person_id = next_id
 
     def start(self):
         with self._lock: self._running = True
@@ -344,15 +387,16 @@ class Simulation:
     def snapshot(self):
         with self._lock:
             alive = [g for g in self.groups if g.alive]
-            assignments, venue_occupied = compute_assignment(alive, _VENUES)
+            assignments, venue_occupied, person_assignments = compute_assignment(alive, _VENUES)
             return {
-                "phase":        self.phase,
-                "running":      self._running,
-                "tick":        self._tick_count,
-                "total":       sum(g.count for g in alive),
-                "groups":      [g.to_dict() for g in alive],
-                "venues":      venues_snapshot(alive, venue_occupied),
-                "assignments": assignments,
+                "phase":             self.phase,
+                "running":           self._running,
+                "tick":              self._tick_count,
+                "total":             sum(g.count for g in alive),
+                "groups":            [g.to_dict() for g in alive],
+                "venues":            venues_snapshot(alive, venue_occupied),
+                "assignments":       assignments,
+                "person_assignments": person_assignments,
             }
 
 

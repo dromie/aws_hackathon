@@ -7,9 +7,9 @@ A web app that simulates crowds moving toward event venues on an OpenStreetMap m
 ## Overview
 
 - **Map**: OpenStreetMap (Leaflet), centered on Budapest, with tiles served from a local cache.
-- **Simulation**: Groups of people move along a road graph; they wander for a few seconds, then rally toward one of two rally points (e.g. Nokia Skypark, Ericsson). Groups can merge when their circles overlap.
+- **Simulation**: Each **person** has a unique integer ID assigned at creation. Persons belong to **groups**; each group keeps a list of its member person IDs. Groups move along a road graph (wander, then rally toward one of two rally points); when two groups overlap they **merge** (one group’s members are moved into the other). Person IDs are stable across timesteps until merge or reset.
 - **Cell towers (venues)**: Fixed hexagons with name, position, capacity, and current occupancy. Occupancy is driven by the **assignment** (not by a fixed radius).
-- **Assignment**: Each tick, every person is assigned to a tower via a **min-cost flow** (groups supply people, towers have capacity; cost = distance). Result is shown as edges on the map (group → tower, thickness by count) and is available via the HTTP API and MCP tools.
+- **Assignment**: Each tick, every person is assigned to a tower via a **min-cost flow** solved at **person level** (one node per person; cost = distance from person’s position to tower). Result is shown as edges on the map (group → tower, thickness by count) and is available as group-level or person-level via the HTTP API and MCP tools.
 
 ---
 
@@ -69,7 +69,7 @@ python mcp_server.py
 | Tool | Description |
 |------|-------------|
 | **`get_assignment_group_level`** | Returns the current assignment at **group level**: a list of `{ "groupIndex", "venueId", "count" }` — one entry per (group, tower) pair with at least one person assigned. |
-| **`get_assignment_person_level`** | Returns the current assignment at **person level**: a list of `{ "groupIndex", "venueId" }` with **one entry per person**. Same assignment as group-level, just expanded (each `count` becomes that many identical group–venue pairs). |
+| **`get_assignment_person_level`** | Returns the current assignment at **person level**: a list of `{ "personId", "venueId" }` with **one entry per person**. `personId` is the unique integer ID assigned when the person was created in the simulation. |
 
 Both tools use the **live** simulation state at the time of the call (latest snapshot from `GET /api/groups`).
 
@@ -83,18 +83,18 @@ Both tools use the **live** simulation state at the time of the call (latest sna
 | POST | `/api/control` | Body: `{ "action": "start" \| "stop" \| "step" \| "rewind" \| "reset" }`. Returns the snapshot after the action. |
 | GET | `/api/venues` | List of venues with occupancy (distance-based if called without going through the main snapshot). |
 
-Snapshot `assignments` is the same structure as the MCP **group-level** tool: list of `{ "groupIndex", "venueId", "count" }`.
+Snapshot includes `assignments` (group-level: `{ "groupIndex", "venueId", "count" }`) and `person_assignments` (person-level: `{ "personId", "venueId" }` with real person IDs).
 
 ---
 
 ## Assignment model
 
-- **Person-level**: Each person is assigned to exactly one tower (or to an overflow sink if total people exceed total capacity).
-- **Cost**: Distance (metres) from the person’s position (group centre) to the tower.
-- **Method**: Min-cost flow: groups supply `count` units, towers have `capacity`; edge cost = distance. Implemented in `server.py` with NetworkX (`nx.min_cost_flow`).
+- **Person-level**: Each person (unique ID) is assigned to exactly one tower (or to an overflow sink if total people exceed total capacity). The min-cost flow is solved with **one node per person**.
+- **Cost**: Distance (metres) from the person’s position (their group’s centre) to the tower.
+- **Method**: Min-cost flow in `server.py` with NetworkX: person nodes (supply 1), venue nodes (capacity), edge cost = distance.
 - **Output**: 
-  - **Group-level**: list of (group index, venue id, count) for each pair with count &gt; 0.
-  - **Person-level**: same assignment expanded to one entry per person (group index + venue id).
+  - **Group-level**: list of (group index, venue id, count) for visualization and edges on the map.
+  - **Person-level**: list of (personId, venueId) with the simulation’s real person IDs.
 
 Venue **occupancy** in the snapshot is the sum of assigned counts to that venue.
 
