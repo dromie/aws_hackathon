@@ -75,16 +75,21 @@ _RALLY_NODES = [_nearest_node(*rp) for rp in RALLY_POINTS]
 # --- Venue cells ---
 # Each cell has a name, position, capacity, and dynamically computed occupancy
 _VENUES = [
-    {"id": 0, "name": "Boráros tér",          "lat": 47.4822406, "lng": 19.0617938, "capacity": 350},
-    {"id": 1, "name": "Lágymányosi híd lába", "lat": 47.4798053, "lng": 19.0502945, "capacity": 200},
-    {"id": 2, "name": "Bercsényi utca park",  "lat": 47.4823197, "lng": 19.0550799, "capacity": 150},
-    {"id": 3, "name": "Ipar utca sarok",      "lat": 47.483705,  "lng": 19.0474799, "capacity": 120},
-    {"id": 4, "name": "Corvin Plaza",         "lat": 47.4847519, "lng": 19.066757,  "capacity": 800},
-    {"id": 5, "name": "Teleki László tér",    "lat": 47.4884021, "lng": 19.0703932, "capacity": 300},
-    {"id": 6, "name": "Mátyás tér",           "lat": 47.4897285, "lng": 19.0730806, "capacity": 250},
-    {"id": 7, "name": "Lujza utca tér",       "lat": 47.4870619, "lng": 19.064957,  "capacity": 200},
-    {"id": 8, "name": "Nokia Skypark előtér", "lat": 47.4860566, "lng": 19.0792738, "capacity": 600},
-    {"id": 9, "name": "Orczy tér",            "lat": 47.4893472, "lng": 19.0821294, "capacity": 400},
+    {"id":  0, "name": "Kopaszi gát déli csúcs",  "lat": 47.4644356, "lng": 19.052092,  "capacity": 200},
+    {"id":  1, "name": "Kopaszi gát északi rész", "lat": 47.46944,   "lng": 19.0566328, "capacity": 150},
+    {"id":  2, "name": "Ipar utca sarok",          "lat": 47.483705,  "lng": 19.0474799, "capacity": 120},
+    {"id":  3, "name": "Bercsényi utca park",      "lat": 47.4823197, "lng": 19.0550799, "capacity": 150},
+    {"id":  4, "name": "Lágymányosi híd lába",    "lat": 47.4798053, "lng": 19.0502945, "capacity": 200},
+    {"id":  5, "name": "Boráros tér",             "lat": 47.4822406, "lng": 19.0617938, "capacity": 350},
+    {"id":  6, "name": "Lujza utca tér",           "lat": 47.4870619, "lng": 19.064957,  "capacity": 200},
+    {"id":  7, "name": "Corvin Plaza",             "lat": 47.4847519, "lng": 19.066757,  "capacity": 800},
+    {"id":  8, "name": "Teleki László tér",        "lat": 47.4884021, "lng": 19.0703932, "capacity": 300},
+    {"id":  9, "name": "Mátyás tér",               "lat": 47.4897285, "lng": 19.0730806, "capacity": 250},
+    {"id": 10, "name": "Nokia Skypark előtér",    "lat": 47.4860566, "lng": 19.0792738, "capacity": 600},
+    {"id": 11, "name": "Orczy tér",               "lat": 47.4893472, "lng": 19.0821294, "capacity": 400},
+    {"id": 12, "name": "Ericsson előtér",         "lat": 47.4713629, "lng": 19.0632207, "capacity": 300},
+    {"id": 13, "name": "Gubacsi út sarok",         "lat": 47.4657381, "lng": 19.0817743, "capacity": 120},
+    {"id": 14, "name": "Sorokssári út park",       "lat": 47.472192,  "lng": 19.0778036, "capacity": 180},
 ]
 # Capture radius in metres: groups within this distance count toward occupancy
 _VENUE_RADIUS_M = 80
