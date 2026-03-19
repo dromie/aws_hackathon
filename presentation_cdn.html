@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CDN Orchestration via MCP – Presentation</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Segoe UI', system-ui, sans-serif; background: #0d1117; color: #e6edf3; overflow: hidden; }
+  .slide { display: none; width: 100vw; height: 100vh; flex-direction: column; justify-content: center; align-items: center; padding: 60px; }
+  .slide.active { display: flex; }
+  h1 { font-size: 3rem; margin-bottom: 24px; color: #58a6ff; }
+  h2 { font-size: 2.2rem; margin-bottom: 20px; color: #58a6ff; }
+  p, li { font-size: 1.3rem; line-height: 1.8; color: #c9d1d9; }
+  ul { list-style: none; padding-left: 0; }
+  ul li::before { content: "▸ "; color: #58a6ff; }
+  .nav { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); display: flex; gap: 16px; z-index: 10; }
+  .nav button { background: #21262d; border: 1px solid #30363d; color: #c9d1d9; padding: 10px 28px; border-radius: 8px; font-size: 1rem; cursor: pointer; transition: background .2s; }
+  .nav button:hover { background: #30363d; }
+  .counter { position: fixed; bottom: 36px; right: 40px; font-size: .9rem; color: #484f58; }
+  svg text { font-family: 'Segoe UI', system-ui, sans-serif; }
+  .box { rx: 14; ry: 14; stroke-width: 2; }
+  .label { font-size: 13px; fill: #8b949e; }
+  .box-title { font-size: 15px; font-weight: 600; }
+  .box-sub { font-size: 12px; fill: #8b949e; }
+  .subtitle { font-size: 1.5rem; color: #8b949e; margin-top: 8px; }
+  .two-col { display: flex; gap: 60px; align-items: flex-start; margin-top: 20px; }
+  .two-col > div { flex: 1; }
+  code { background: #161b22; padding: 2px 8px; border-radius: 4px; font-size: 1.1rem; }
+  .step-num { display: inline-block; width: 36px; height: 36px; line-height: 36px; text-align: center; border-radius: 50%; background: #58a6ff; color: #0d1117; font-weight: 700; margin-right: 12px; font-size: 1rem; }
+  .steps li { display: flex; align-items: center; margin-bottom: 14px; }
+  .steps li::before { content: none; }
+</style>
+</head>
+<body>
+
+<!-- SLIDE 1 – Title -->
+<div class="slide active">
+  <h1>CDN Orchestration via MCP</h1>
+  <p class="subtitle">Using crowd-location intelligence to deploy CDN servers optimally</p>
+  <p style="margin-top:40px; color:#484f58; font-size:1rem;">← → or buttons to navigate</p>
+</div>
+
+<!-- SLIDE 2 – Problem Statement -->
+<div class="slide">
+  <h2>The Problem</h2>
+  <ul style="max-width:820px;">
+    <li>Subscribers (people) are constantly moving across the city</li>
+    <li>CDN servers must be placed close to where demand actually is</li>
+    <li>Static placement wastes capacity in empty areas and starves crowded ones</li>
+    <li>We need real-time location data to drive dynamic CDN deployment</li>
+  </ul>
+</div>
+
+<!-- SLIDE 3 – Solution Overview -->
+<div class="slide">
+  <h2>The Solution</h2>
+  <ul style="max-width:820px;">
+    <li>MCP Server exposes live subscriber location &amp; tower-assignment statistics</li>
+    <li>An Orchestration Agent (LLM) consumes this data via MCP tools</li>
+    <li>The agent analyses crowd density and decides optimal CDN placement</li>
+    <li>CDN servers are deployed nearest to the highest subscriber concentrations</li>
+  </ul>
+</div>
+
+<!-- SLIDE 4 – Architecture Diagram -->
+<div class="slide">
+  <h2>Architecture</h2>
+  <svg viewBox="0 0 960 540" width="920" height="520" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <marker id="ah" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
+        <polygon points="0 0, 10 3.5, 0 7" fill="#58a6ff"/>
+      </marker>
+    </defs>
+
+    <!-- Simulation Server -->
+    <rect class="box" x="370" y="10" width="230" height="90" fill="#161b22" stroke="#f0883e"/>
+    <text class="box-title" x="485" y="45" text-anchor="middle" fill="#f0883e">Simulation Server</text>
+    <text class="box-sub" x="485" y="65" text-anchor="middle">Live crowd movement</text>
+    <text class="box-sub" x="485" y="80" text-anchor="middle">GET /api/groups</text>
+
+    <!-- MCP Server -->
+    <rect class="box" x="370" y="180" width="230" height="100" fill="#161b22" stroke="#3fb950"/>
+    <text class="box-title" x="485" y="215" text-anchor="middle" fill="#3fb950">MCP Server</text>
+    <text class="box-sub" x="485" y="235" text-anchor="middle">get_assignment_group_level</text>
+    <text class="box-sub" x="485" y="252" text-anchor="middle">get_assignment_person_level</text>
+    <text class="box-sub" x="485" y="269" text-anchor="middle">Subscriber location statistics</text>
+
+    <!-- Orchestration Agent -->
+    <rect class="box" x="345" y="370" width="280" height="100" fill="#161b22" stroke="#bc8cff"/>
+    <text class="box-title" x="485" y="405" text-anchor="middle" fill="#bc8cff">Orchestration Agent (LLM)</text>
+    <text class="box-sub" x="485" y="425" text-anchor="middle">Analyses density hotspots</text>
+    <text class="box-sub" x="485" y="442" text-anchor="middle">Decides optimal CDN placement</text>
+    <text class="box-sub" x="485" y="459" text-anchor="middle">Issues deploy / teardown commands</text>
+
+    <!-- CDN Servers -->
+    <rect class="box" x="40" y="370" width="200" height="100" fill="#161b22" stroke="#f778ba"/>
+    <text class="box-title" x="140" y="405" text-anchor="middle" fill="#f778ba">CDN Server A</text>
+    <text class="box-sub" x="140" y="425" text-anchor="middle">Deployed near Venue 1</text>
+    <text class="box-sub" x="140" y="442" text-anchor="middle">High subscriber density</text>
+
+    <rect class="box" x="720" y="370" width="200" height="100" fill="#161b22" stroke="#f778ba"/>
+    <text class="box-title" x="820" y="405" text-anchor="middle" fill="#f778ba">CDN Server B</text>
+    <text class="box-sub" x="820" y="425" text-anchor="middle">Deployed near Venue 2</text>
+    <text class="box-sub" x="820" y="442" text-anchor="middle">Growing crowd detected</text>
+
+    <!-- Subscribers cloud -->
+    <ellipse cx="485" cy="540" rx="140" ry="30" fill="none" stroke="#8b949e" stroke-dasharray="6 4" stroke-width="1.5" opacity=".5"/>
+
+    <!-- Arrow: Sim → MCP -->
+    <line x1="485" y1="100" x2="485" y2="175" stroke="#f0883e" stroke-width="2.5" marker-end="url(#ah)"/>
+    <text class="label" x="495" y="142">HTTP snapshot</text>
+
+    <!-- Arrow: MCP → Agent -->
+    <path d="M460,280 L460,365" stroke="#3fb950" stroke-width="2.5" fill="none" marker-end="url(#ah)"/>
+    <text class="label" x="395" y="330" fill="#3fb950">location stats</text>
+
+    <path d="M510,365 L510,280" stroke="#bc8cff" stroke-width="2.5" fill="none" marker-end="url(#ah)"/>
+    <text class="label" x="520" y="330">MCP tool calls</text>
+
+    <!-- Agent → CDN A -->
+    <path d="M345,420 L245,420" stroke="#bc8cff" stroke-width="2.5" fill="none" marker-end="url(#ah)"/>
+    <text class="label" x="265" y="410">deploy</text>
+
+    <!-- Agent → CDN B -->
+    <path d="M625,420 L715,420" stroke="#bc8cff" stroke-width="2.5" fill="none" marker-end="url(#ah)"/>
+    <text class="label" x="645" y="410">deploy</text>
+  </svg>
+</div>
+
+<!-- SLIDE 5 – How the Agent Decides -->
+<div class="slide">
+  <h2>How the Agent Decides</h2>
+  <ul class="steps" style="max-width:820px;">
+    <li><span class="step-num">1</span>Calls <code>get_assignment_group_level</code> — gets crowd-to-tower counts</li>
+    <li><span class="step-num">2</span>Calls <code>get_assignment_person_level</code> — gets per-subscriber locations</li>
+    <li><span class="step-num">3</span>Identifies density hotspots — which towers have the most subscribers</li>
+    <li><span class="step-num">4</span>Computes optimal CDN positions — nearest to the highest concentrations</li>
+    <li><span class="step-num">5</span>Deploys CDN servers at those locations, tears down underutilised ones</li>
+    <li><span class="step-num">6</span>Repeats on a schedule — CDN topology follows the crowd in real time</li>
+  </ul>
+</div>
+
+<!-- SLIDE 6 – MCP Data Driving Decisions -->
+<div class="slide">
+  <h2>MCP Data → CDN Decisions</h2>
+  <div class="two-col">
+    <div>
+      <p style="color:#3fb950; font-weight:600; margin-bottom:12px;">What MCP Provides</p>
+      <ul>
+        <li>Which tower each subscriber is assigned to</li>
+        <li>How many subscribers per tower (load)</li>
+        <li>Group positions → geographic demand map</li>
+        <li>All data is live — refreshed every tick</li>
+      </ul>
+    </div>
+    <div>
+      <p style="color:#bc8cff; font-weight:600; margin-bottom:12px;">What the Agent Does With It</p>
+      <ul>
+        <li>Ranks towers by subscriber count</li>
+        <li>Maps tower coordinates to candidate CDN sites</li>
+        <li>Balances capacity: avoids over-provisioning quiet areas</li>
+        <li>Shifts CDN resources as crowds move between venues</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- SLIDE 7 – Orchestration Loop Diagram -->
+<div class="slide">
+  <h2>Continuous Orchestration Loop</h2>
+  <svg viewBox="0 0 800 320" width="760" height="305" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <marker id="ah3" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
+        <polygon points="0 0, 10 3.5, 0 7" fill="#58a6ff"/>
+      </marker>
+    </defs>
+
+    <!-- Boxes -->
+    <rect class="box" x="20" y="120" width="150" height="70" fill="#161b22" stroke="#3fb950"/>
+    <text class="box-title" x="95" y="152" text-anchor="middle" fill="#3fb950">MCP Server</text>
+    <text class="box-sub" x="95" y="170" text-anchor="middle">Live stats</text>
+
+    <rect class="box" x="240" y="120" width="150" height="70" fill="#161b22" stroke="#bc8cff"/>
+    <text class="box-title" x="315" y="152" text-anchor="middle" fill="#bc8cff">Agent</text>
+    <text class="box-sub" x="315" y="170" text-anchor="middle">Analyse &amp; plan</text>
+
+    <rect class="box" x="460" y="120" width="150" height="70" fill="#161b22" stroke="#f778ba"/>
+    <text class="box-title" x="535" y="152" text-anchor="middle" fill="#f778ba">CDN Infra</text>
+    <text class="box-sub" x="535" y="170" text-anchor="middle">Deploy / scale</text>
+
+    <rect class="box" x="630" y="120" width="150" height="70" fill="#161b22" stroke="#8b949e"/>
+    <text class="box-title" x="705" y="152" text-anchor="middle" fill="#c9d1d9">Subscribers</text>
+    <text class="box-sub" x="705" y="170" text-anchor="middle">Served by nearest CDN</text>
+
+    <!-- Forward arrows -->
+    <line x1="170" y1="155" x2="235" y2="155" stroke="#58a6ff" stroke-width="2.5" marker-end="url(#ah3)"/>
+    <line x1="390" y1="155" x2="455" y2="155" stroke="#58a6ff" stroke-width="2.5" marker-end="url(#ah3)"/>
+    <line x1="610" y1="155" x2="625" y2="155" stroke="#58a6ff" stroke-width="2.5" marker-end="url(#ah3)"/>
+
+    <!-- Feedback loop -->
+    <path d="M705,190 Q705,280 95,280 Q60,280 60,190" stroke="#f0883e" stroke-width="2" fill="none" stroke-dasharray="8 4" marker-end="url(#ah3)"/>
+    <text class="label" x="340" y="270" fill="#f0883e">Crowd moves → new stats → agent re-evaluates → CDN shifts</text>
+  </svg>
+  <p style="margin-top:20px; max-width:700px; text-align:center;">
+    The loop runs continuously — as subscribers move, the MCP server reflects new density data,
+    and the orchestration agent repositions CDN servers to stay optimal.
+  </p>
+</div>
+
+<!-- SLIDE 8 – Summary -->
+<div class="slide">
+  <h2>Key Takeaways</h2>
+  <ul style="max-width:820px;">
+    <li>MCP Server bridges live crowd simulation data to the AI agent</li>
+    <li>The orchestration agent uses subscriber location stats to find density hotspots</li>
+    <li>CDN servers are deployed nearest to where subscribers actually are</li>
+    <li>As crowds shift, the agent continuously re-optimises CDN placement</li>
+    <li>Result: lower latency, better capacity utilisation, dynamic infrastructure</li>
+  </ul>
+</div>
+
+<!-- SLIDE 9 – Vibe Coding -->
+<div class="slide">
+  <h2>One More Thing…</h2>
+  <p style="font-size:4rem; margin:40px 0;">🎵💻</p>
+  <p style="font-size:1.8rem; max-width:700px; text-align:center; line-height:1.6;">
+    Vibe coding is fun<br>
+    <span style="color:#484f58; font-size:1.4rem;">…until the deadline is approaching.</span>
+  </p>
+  <p style="margin-top:50px; font-size:1.2rem; color:#f0883e;">Ship it before the vibes run out. 🚀</p>
+</div>
+
+<!-- Navigation -->
+<div class="nav">
+  <button onclick="go(-1)">← Prev</button>
+  <button onclick="go(1)">Next →</button>
+</div>
+<div class="counter" id="counter"></div>
+
+<script>
+const slides = document.querySelectorAll('.slide');
+let cur = 0;
+function show(i) {
+  slides[cur].classList.remove('active');
+  cur = (i + slides.length) % slides.length;
+  slides[cur].classList.add('active');
+  document.getElementById('counter').textContent = `${cur + 1} / ${slides.length}`;
+}
+function go(d) { show(cur + d); }
+document.addEventListener('keydown', e => {
+  if (e.key === 'ArrowRight' || e.key === ' ') go(1);
+  else if (e.key === 'ArrowLeft') go(-1);
+});
+show(0);
+</script>
+</body>
+</html>
