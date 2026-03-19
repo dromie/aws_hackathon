@@ -77,6 +77,7 @@ const ERICSSON_RALLY_NODE = '9921293897';
 
 let nokiaZone = null, ericssonZone = null;
 let towerNetwork = null;
+let cdnNodes = [];
 
 async function loadZones() {
   const [nz, ez, tn] = await Promise.all([
@@ -231,36 +232,47 @@ function draw(data) {
 
   if (data.venues) drawVenues(data.venues);
 
-  // Draw assignment edges: rally points -> venues
-  // Aggregate assignment counts per (rally_node, venueId)
-  if (data.assignments && data.groups && data.venues) {
-    const rallyCount = {};
-    for (const a of data.assignments) {
-      const g = data.groups[a.groupIndex];
-      if (!g) continue;
-      const rk = g.rally_node + ':' + a.venueId;
-      rallyCount[rk] = (rallyCount[rk] || 0) + a.count;
-    }
-    const maxCount = Math.max(1, ...Object.values(rallyCount));
-    const rallyCoords = {
+  // Draw assignment edges: moving groups -> venue (sárga)
+  // + arrived accumulation: rally point -> venue (narancs, vastagabb)
+  if (data.venues) {
+    const RALLY_COORDS = {
       [NOKIA_RALLY_NODE]:    [47.48616316916723, 19.079061866933007],
       [ERICSSON_RALLY_NODE]: [47.47132533866037, 19.06329047791874],
     };
-    for (const [rk, count] of Object.entries(rallyCount)) {
-      const [rally_node, venueIdStr] = rk.split(':');
-      const venueId = parseInt(venueIdStr);
-      const v = data.venues.find(vn => vn.id === venueId);
-      const coords = rallyCoords[rally_node];
-      if (!v || !coords) continue;
-      const pFrom = map.latLngToContainerPoint(coords);
+
+    // 1. Mozgó csoportok -> venue vonalak
+    if (data.assignments && data.groups) {
+      const maxCount = Math.max(1, ...data.assignments.map(a => a.count));
+      for (const a of data.assignments) {
+        const g = data.groups[a.groupIndex];
+        const v = data.venues.find(vn => vn.id === a.venueId);
+        if (!g || !v) continue;
+        const pFrom = map.latLngToContainerPoint([g.lat, g.lng]);
+        const pTo   = map.latLngToContainerPoint([v.lat, v.lng]);
+        const t = Math.min(a.count / maxCount, 1);
+        ctx.beginPath(); ctx.moveTo(pFrom.x, pFrom.y); ctx.lineTo(pTo.x, pTo.y);
+        ctx.strokeStyle = `rgba(255,220,50,${0.4 + 0.5 * t})`;
+        ctx.lineWidth = 0.8 + t * 2; ctx.stroke();
+      }
+    }
+
+    // 2. Megérkezett emberek: rally pont -> venue vonalak (narancs)
+    const venueArr = data.venue_assignments || {};
+    const maxArrived = Math.max(1, ...Object.values(venueArr).map(Number));
+    for (const v of data.venues) {
+      const arrived = venueArr[String(v.id)] || 0;
+      if (arrived === 0) continue;
+      // Melyik rally ponthoz tartozik? A venue-ba érkező emberek rally_node-ja
+      // Közelebb lévő rally pontból húzzuk a vonalat
+      const dNokia    = Math.hypot((v.lat-47.48616)*111000, (v.lng-19.07906)*74000);
+      const dEricsson = Math.hypot((v.lat-47.47133)*111000, (v.lng-19.06329)*74000);
+      const rCoords = dNokia < dEricsson ? RALLY_COORDS[NOKIA_RALLY_NODE] : RALLY_COORDS[ERICSSON_RALLY_NODE];
+      const pFrom = map.latLngToContainerPoint(rCoords);
       const pTo   = map.latLngToContainerPoint([v.lat, v.lng]);
-      const t     = Math.min(count / maxCount, 1);
-      ctx.beginPath();
-      ctx.moveTo(pFrom.x, pFrom.y);
-      ctx.lineTo(pTo.x, pTo.y);
-      ctx.strokeStyle = `rgba(255,220,50,${0.5 + 0.45 * t})`;
-      ctx.lineWidth   = 0.8 + t * 2.5;
-      ctx.stroke();
+      const t = Math.min(arrived / maxArrived, 1);
+      ctx.beginPath(); ctx.moveTo(pFrom.x, pFrom.y); ctx.lineTo(pTo.x, pTo.y);
+      ctx.strokeStyle = `rgba(255,140,0,${0.55 + 0.4 * t})`;
+      ctx.lineWidth = 1.5 + t * 4; ctx.stroke();
     }
   }
 }
@@ -306,10 +318,13 @@ document.getElementById('btn-reset').addEventListener('click', () => {
   }).then(r => r.json()).then(data => { draw(data); updateStatus(data); });
 });
 
+let _cdnTick = 0;
 async function poll() {
   try {
     const res  = await fetch('/api/groups');
     const data = await res.json();
+    if (++_cdnTick % 30 === 1) // refresh CDN list every ~3s
+      fetch('/api/cdn').then(r=>r.json()).then(n=>{cdnNodes=n;}).catch(()=>{});
     draw(data);
     updateStatus(data);
   } catch(e) {

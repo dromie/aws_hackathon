@@ -1,0 +1,7 @@
+[
+  {"id": "cdn-1", "towerId": 5},
+  {"id": "cdn-2", "towerId": 7},
+  {"id": "cdn-3", "towerId": 10},
+  {"id": "cdn-4", "towerId": 11},
+  {"id": "cdn-5", "towerId": 9}
+]

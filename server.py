@@ -300,6 +300,7 @@ class Simulation:
         self._tick_count    = 0
         self._total_spawned = sum(g.count for g in self.groups)
         self._arrived       = {str(n): 0 for n in _RALLY_NODES}
+        self._venue_assignments = {}  # venueId -> {groupIndex: count} accumulated from arrived groups
         self._history.clear()
         self._save_history()
 
@@ -338,9 +339,18 @@ class Simulation:
             g.step(wander)
 
         # Groups that reached their rally node: absorb into arrived count
-        for g in alive:
+        assignments_now, _ = self._last_assignment
+        # Build groupIndex -> venueId lookup from current assignment
+        gi_to_venue = {a['groupIndex']: a['venueId'] for a in assignments_now}
+        alive_list = [g for g in self.groups if g.alive]
+        for idx, g in enumerate(alive_list):
             if not wander and g.node == g.rally_node:
                 self._arrived[str(g.rally_node)] = self._arrived.get(str(g.rally_node), 0) + g.count
+                # Accumulate venue assignment for this arrived group
+                venue_id = gi_to_venue.get(idx)
+                if venue_id is not None:
+                    key = str(venue_id)
+                    self._venue_assignments[key] = self._venue_assignments.get(key, 0) + g.count
                 g.alive = False
 
         # Merge groups whose circles overlap (radius converted to metres)
@@ -418,6 +428,7 @@ class Simulation:
                 "total":         sum(g.count for g in alive),
                 "total_spawned": self._total_spawned,
                 "arrived":       dict(self._arrived),
+                "venue_assignments": dict(self._venue_assignments),
                 "groups":        [g.to_dict() for g in alive],
                 "venues":        venues,
                 "assignments":   assignments,
@@ -427,6 +438,24 @@ class Simulation:
 print("Building road graph...")
 sim = Simulation()
 print("Ready.")
+
+
+# --- CDN nodes persistence ---
+CDN_FILE = os.path.join(BASE, 'cdn_nodes.json')
+_cdn_lock = threading.Lock()
+
+def _load_cdn():
+    try:
+        with open(CDN_FILE) as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return []
+
+def _save_cdn(nodes):
+    with open(CDN_FILE, 'w') as f:
+        json.dump(nodes, f, indent=2)
+
+_tower_ids = {v['id'] for v in _VENUES}
 
 
 class Handler(http.server.SimpleHTTPRequestHandler):
@@ -456,6 +485,17 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
         # Serve map tiles from local cache
         parts = self.path.lstrip('/').split('/')
+
+        if self.path == '/api/cdn':
+            with _cdn_lock:
+                body = json.dumps(_load_cdn(), ensure_ascii=False).encode()
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
         if len(parts) == 3 and parts[2].endswith('.png'):
             tile_path = os.path.join(BASE, 'tiles', *parts)
             if os.path.exists(tile_path):
@@ -488,12 +528,69 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(body)
             return
+        if self.path == '/api/cdn':
+            data = self._read_json()
+            nid, tid = data.get('id'), data.get('towerId')
+            if not nid or tid not in _tower_ids:
+                return self._cdn_response(400, {'error': 'invalid id or towerId'})
+            with _cdn_lock:
+                nodes = _load_cdn()
+                if any(n['id'] == nid for n in nodes):
+                    return self._cdn_response(409, {'error': 'id already exists'})
+                if any(n['towerId'] == tid for n in nodes):
+                    return self._cdn_response(409, {'error': 'tower already has a CDN node'})
+                nodes.append({'id': nid, 'towerId': tid})
+                _save_cdn(nodes)
+                return self._cdn_response(201, nodes)
+        self.send_error(404)
+
+    def _cdn_response(self, code, body_obj):
+        body = json.dumps(body_obj, ensure_ascii=False).encode()
+        self.send_response(code)
+        self.send_header('Content-Type', 'application/json')
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _read_json(self):
+        length = int(self.headers.get('Content-Length', 0))
+        return json.loads(self.rfile.read(length))
+
+    def do_PUT(self):
+        if self.path == '/api/cdn':
+            data = self._read_json()
+            nid, tid = data.get('id'), data.get('towerId')
+            if not nid or tid not in _tower_ids:
+                return self._cdn_response(400, {'error': 'invalid id or towerId'})
+            with _cdn_lock:
+                nodes = _load_cdn()
+                node = next((n for n in nodes if n['id'] == nid), None)
+                if not node:
+                    return self._cdn_response(404, {'error': 'not found'})
+                if any(n['towerId'] == tid and n['id'] != nid for n in nodes):
+                    return self._cdn_response(409, {'error': 'tower already has a CDN node'})
+                node['towerId'] = tid
+                _save_cdn(nodes)
+                return self._cdn_response(200, nodes)
+        self.send_error(404)
+
+    def do_DELETE(self):
+        if self.path.startswith('/api/cdn/'):
+            nid = self.path[len('/api/cdn/'):]
+            with _cdn_lock:
+                nodes = _load_cdn()
+                before = len(nodes)
+                nodes = [n for n in nodes if n['id'] != nid]
+                if len(nodes) == before:
+                    return self._cdn_response(404, {'error': 'not found'})
+                _save_cdn(nodes)
+                return self._cdn_response(200, nodes)
         self.send_error(404)
 
     def do_OPTIONS(self):
         self.send_response(204)
         self.send_header('Access-Control-Allow-Origin', '*')
-        self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+        self.send_header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
         self.send_header('Access-Control-Allow-Headers', 'Content-Type')
         self.end_headers()
 
