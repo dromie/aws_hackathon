@@ -3,10 +3,11 @@
 Deploy or destroy crowd-map server on AWS ECS Fargate.
 
 Usage:
-    python deploy.py deploy   # create all resources and deploy
-    python deploy.py destroy  # tear down everything
+    python deploy.py ecr       # create ECR repo only (run before first GH Actions push)
+    python deploy.py deploy    # create all ECS resources and deploy
+    python deploy.py destroy   # tear down everything
 """
-import boto3, json, subprocess, sys, time
+import boto3, json, sys, time
 
 REGION    = "us-east-1"
 REPO_NAME = "crowd-map"
@@ -17,7 +18,7 @@ CONTAINER = "crowd-map"
 PORT      = 8765
 CPU       = "512"
 MEMORY    = "1024"
-ARCH      = "ARM64"
+ARCH      = "X86_64"
 SG_NAME   = "crowd-map-sg"
 ROLE_NAME = "ecsTaskExecutionRole"
 LOG_GROUP = f"/ecs/{TASK_FAM}"
@@ -47,40 +48,31 @@ TRUST = json.dumps({
 })
 
 
-def run(cmd):
-    print(f"  $ {cmd}")
-    r = subprocess.run(cmd, shell=True, capture_output=True, text=True)
-    if r.returncode != 0:
-        print(r.stderr); sys.exit(1)
-    return r.stdout.strip()
-
-
 def get_vpc_id():
     vpcs = ec2.describe_vpcs(Filters=[{"Name": "isDefault", "Values": ["true"]}])
     return vpcs["Vpcs"][0]["VpcId"]
 
 
-# ──────────────────────────── DEPLOY ────────────────────────────
+# ──────────────────────────── ECR ───────────────────────────────
 
-def deploy():
-    # 1. ECR
-    print("\n=== 1. ECR repository ===")
+def create_ecr():
+    print("\n=== ECR repository ===")
     try:
         ecr.create_repository(repositoryName=REPO_NAME, tags=TAGS)
         print(f"Created {REPO_NAME}")
     except ecr.exceptions.RepositoryAlreadyExistsException:
         print(f"Exists: {REPO_NAME}")
 
-    # 2. Docker build & push
-    print("\n=== 2. Build & push Docker image ===")
-    pwd = run(f"aws ecr get-login-password --region {REGION}")
-    run(f"echo '{pwd}' | docker login --username AWS --password-stdin {ECR_URI}")
-    run(f"docker build -t {REPO_NAME} /workshop")
-    run(f"docker tag {REPO_NAME}:latest {IMAGE}")
-    run(f"docker push {IMAGE}")
 
-    # 3. IAM execution role
-    print("\n=== 3. ECS execution role ===")
+# ──────────────────────────── DEPLOY ────────────────────────────
+
+def deploy():
+    create_ecr()
+
+    print(f"\n=== Using image: {IMAGE} ===")
+
+    # IAM execution role
+    print("\n=== ECS execution role ===")
     try:
         iam.create_role(RoleName=ROLE_NAME,
                         AssumeRolePolicyDocument=TRUST,
@@ -93,16 +85,16 @@ def deploy():
         print(f"Exists: {ROLE_NAME}")
     role_arn = iam.get_role(RoleName=ROLE_NAME)["Role"]["Arn"]
 
-    # 4. CloudWatch log group
-    print("\n=== 4. Log group ===")
+    # CloudWatch log group
+    print("\n=== Log group ===")
     try:
         logs.create_log_group(logGroupName=LOG_GROUP, tags={TAG_KEY: TAG_VALUE})
         print(f"Created {LOG_GROUP}")
     except logs.exceptions.ResourceAlreadyExistsException:
         print(f"Exists: {LOG_GROUP}")
 
-    # 5. Security group
-    print("\n=== 5. Security group ===")
+    # Security group
+    print("\n=== Security group ===")
     vpc_id = get_vpc_id()
     sgs = ec2.describe_security_groups(
         Filters=[{"Name": "group-name", "Values": [SG_NAME]},
@@ -122,19 +114,19 @@ def deploy():
                             "IpRanges": [{"CidrIp": "0.0.0.0/0"}]}])
         print(f"Created: {sg_id}")
 
-    # 6. Subnets
+    # Subnets
     subnets = ec2.describe_subnets(
         Filters=[{"Name": "vpc-id", "Values": [vpc_id]},
                  {"Name": "default-for-az", "Values": ["true"]}])
     subnet_ids = [s["SubnetId"] for s in subnets["Subnets"][:2]]
 
-    # 7. ECS cluster
-    print("\n=== 6. ECS cluster ===")
+    # ECS cluster
+    print("\n=== ECS cluster ===")
     ecs.create_cluster(clusterName=CLUSTER, tags=ECS_TAGS)
     print(f"Cluster: {CLUSTER}")
 
-    # 8. Task definition
-    print("\n=== 7. Task definition ===")
+    # Task definition
+    print("\n=== Task definition ===")
     ecs.register_task_definition(
         family=TASK_FAM,
         networkMode="awsvpc",
@@ -156,8 +148,8 @@ def deploy():
         tags=ECS_TAGS)
     print(f"Registered: {TASK_FAM}")
 
-    # 9. Service
-    print("\n=== 8. Create/update service ===")
+    # Service
+    print("\n=== Create/update service ===")
     try:
         existing = ecs.describe_services(cluster=CLUSTER, services=[SERVICE])
         active = [s for s in existing["services"] if s["status"] == "ACTIVE"]
@@ -179,8 +171,8 @@ def deploy():
             tags=ECS_TAGS)
         print(f"Created service: {SERVICE}")
 
-    # 10. Wait for public IP
-    print("\n=== 9. Waiting for task to start ===")
+    # Wait for public IP
+    print("\n=== Waiting for task to start ===")
     for attempt in range(60):
         tasks = ecs.list_tasks(cluster=CLUSTER, serviceName=SERVICE)
         if tasks["taskArns"]:
@@ -264,7 +256,8 @@ def destroy():
 # ──────────────────────────── MAIN ──────────────────────────────
 
 if __name__ == "__main__":
-    if len(sys.argv) < 2 or sys.argv[1] not in ("deploy", "destroy"):
-        print("Usage: python deploy.py [deploy|destroy]")
+    cmds = {"ecr": create_ecr, "deploy": deploy, "destroy": destroy}
+    if len(sys.argv) < 2 or sys.argv[1] not in cmds:
+        print("Usage: python deploy.py [ecr|deploy|destroy]")
         sys.exit(1)
-    {"deploy": deploy, "destroy": destroy}[sys.argv[1]]()
+    cmds[sys.argv[1]]()
