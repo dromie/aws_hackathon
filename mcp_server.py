@@ -19,10 +19,7 @@ def _fetch_snapshot():
     return r.json()
 
 
-mcp = FastMCP(
-    "Crowd Simulation Assignment",
-    description="Cell-tower assignment for the Budapest crowd simulation (persons → towers).",
-)
+mcp = FastMCP("Crowd Simulation Assignment")
 
 
 @mcp.tool()
