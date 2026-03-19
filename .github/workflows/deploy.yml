@@ -1,0 +1,94 @@
+name: Deploy to ECS
+
+on:
+  push:
+    branches: [main]
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REPO: crowd-map
+  ECS_CLUSTER: crowd-map-cluster
+  ECS_SERVICE: crowd-map-svc
+  TASK_FAMILY: crowd-map-task
+  CONTAINER: crowd-map
+  PORT: "8765"
+  CPU: "512"
+  MEMORY: "1024"
+  ARCH: ARM64
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set image URI
+        run: echo "IMAGE=${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPO }}:${{ github.sha }}" >> "$GITHUB_ENV"
+
+      - name: Build & push image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          platforms: linux/arm64
+          tags: |
+            ${{ env.IMAGE }}
+            ${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPO }}:latest
+
+      - name: Get execution role ARN
+        run: |
+          ROLE_ARN=$(aws iam get-role --role-name ecsTaskExecutionRole --query 'Role.Arn' --output text)
+          echo "ROLE_ARN=$ROLE_ARN" >> "$GITHUB_ENV"
+
+      - name: Register new task definition
+        run: |
+          aws ecs register-task-definition \
+            --family "$TASK_FAMILY" \
+            --network-mode awsvpc \
+            --requires-compatibilities FARGATE \
+            --cpu "$CPU" --memory "$MEMORY" \
+            --execution-role-arn "$ROLE_ARN" \
+            --runtime-platform cpuArchitecture="$ARCH",operatingSystemFamily=LINUX \
+            --container-definitions '[{
+              "name": "'"$CONTAINER"'",
+              "image": "'"$IMAGE"'",
+              "portMappings": [{"containerPort": '"$PORT"', "protocol": "tcp"}],
+              "essential": true,
+              "logConfiguration": {
+                "logDriver": "awslogs",
+                "options": {
+                  "awslogs-group": "/ecs/'"$TASK_FAMILY"'",
+                  "awslogs-region": "'"$AWS_REGION"'",
+                  "awslogs-stream-prefix": "ecs"
+                }
+              }
+            }]'
+
+      - name: Deploy to ECS
+        run: |
+          aws ecs update-service \
+            --cluster "$ECS_CLUSTER" \
+            --service "$ECS_SERVICE" \
+            --task-definition "$TASK_FAMILY" \
+            --force-new-deployment
+
+      - name: Wait for deployment
+        run: |
+          aws ecs wait services-stable \
+            --cluster "$ECS_CLUSTER" \
+            --services "$ECS_SERVICE"
+          echo "Deployment complete!"
