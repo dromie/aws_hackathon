@@ -27,8 +27,10 @@
 // --- Térkép ---
 const RALLY = [47.5149, 18.5763]; // Hősök tere
 const map = L.map('map', { zoomControl: true }).setView([47.5140, 18.5760], 15);
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-  attribution: '© OpenStreetMap contributors'
+L.tileLayer('http://localhost:8765/{z}/{x}/{y}.png', {
+  attribution: '© OpenStreetMap contributors',
+  maxZoom: 15,
+  minZoom: 15
 }).addTo(map);
 
 // Rally jelölő
