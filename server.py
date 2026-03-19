@@ -85,9 +85,9 @@ _VENUES = [
     {"id":  7, "name": "Corvin Plaza",             "lat": 47.4847519, "lng": 19.066757,  "capacity": 800},
     {"id":  8, "name": "Teleki László tér",        "lat": 47.4884021, "lng": 19.0703932, "capacity": 300},
     {"id":  9, "name": "Mátyás tér",               "lat": 47.4897285, "lng": 19.0730806, "capacity": 250},
-    {"id": 10, "name": "Nokia Skypark előtér",    "lat": 47.4860566, "lng": 19.0792738, "capacity": 600},
+    {"id": 10, "name": "Illatos út sarok",         "lat": 47.4832,    "lng": 19.0850,    "capacity": 600},
     {"id": 11, "name": "Orczy tér",               "lat": 47.4893472, "lng": 19.0821294, "capacity": 400},
-    {"id": 12, "name": "Ericsson előtér",         "lat": 47.4713629, "lng": 19.0632207, "capacity": 300},
+    {"id": 12, "name": "Dandár utca",             "lat": 47.4760,    "lng": 19.0680,    "capacity": 300},
     {"id": 13, "name": "Gubacsi út sarok",         "lat": 47.4657381, "lng": 19.0817743, "capacity": 120},
     {"id": 14, "name": "Sorokssári út park",       "lat": 47.472192,  "lng": 19.0778036, "capacity": 180},
 ]
