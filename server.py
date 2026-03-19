@@ -95,79 +95,13 @@ _VENUES = [
 _VENUE_RADIUS_M = 80
 
 
-def compute_assignment(groups, venues_list):
-    """
-    Assign each person (from groups) to a tower via min-cost flow.
-    Groups supply count_i units; towers have capacity_j. Cost = distance.
-    Returns (assignments, venue_occupied): assignments is list of
-    { groupIndex, venueId, count } for each (group, tower) with count > 0;
-    venue_occupied is list of per-venue assigned counts (same order as venues_list).
-    """
-    if not groups or not venues_list:
-        return [], [0] * len(venues_list)
-
-    total_people = sum(g.count for g in groups)
-    total_capacity = sum(v["capacity"] for v in venues_list)
-
-    G = nx.DiGraph()
-    src, sink, overflow = "src", "sink", "overflow"
-
-    # Nodes: source, sink, overflow (if needed), one per group, one per venue
-    G.add_node(src, demand=-total_people)
-    G.add_node(sink, demand=min(total_people, total_capacity))
-    if total_people > total_capacity:
-        G.add_node(overflow, demand=total_people - total_capacity)
-
-    for i in range(len(groups)):
-        G.add_node(("g", i), demand=0)
-    for j in range(len(venues_list)):
-        G.add_node(("v", j), demand=0)
-
-    # Edges: source -> groups; groups -> towers; towers -> sink; groups -> overflow
-    for i, g in enumerate(groups):
-        G.add_edge(src, ("g", i), capacity=g.count, weight=0)
-    for i, g in enumerate(groups):
-        for j, v in enumerate(venues_list):
-            d = int(round(_dist_m(g.lat, g.lng, v["lat"], v["lng"])))
-            G.add_edge(("g", i), ("v", j), capacity=g.count, weight=d)
-    for j, v in enumerate(venues_list):
-        G.add_edge(("v", j), sink, capacity=v["capacity"], weight=0)
-    if total_people > total_capacity:
-        for i, g in enumerate(groups):
-            G.add_edge(("g", i), overflow, capacity=g.count, weight=1000000)
-
-    try:
-        flow = nx.min_cost_flow(G)
-    except nx.NetworkXUnfeasible:
-        return [], [0] * len(venues_list)
-
-    assignments = []
-    venue_occupied = [0] * len(venues_list)
-    for i in range(len(groups)):
-        for j in range(len(venues_list)):
-            f = flow.get(("g", i), {}).get(("v", j), 0)
-            if f > 0:
-                assignments.append({"groupIndex": i, "venueId": venues_list[j]["id"], "count": f})
-                venue_occupied[j] += f
-
-    return assignments, venue_occupied
-
-
-def venues_snapshot(groups, venue_occupied=None):
-    """
-    Build venue list with id, name, lat, lng, capacity, occupied.
-    If venue_occupied is provided (from compute_assignment), use it; else
-    compute occupancy by distance (groups within _VENUE_RADIUS_M).
-    """
+def venues_snapshot(groups):
     result = []
-    for idx, v in enumerate(_VENUES):
-        if venue_occupied is not None and idx < len(venue_occupied):
-            occupied = venue_occupied[idx]
-        else:
-            occupied = sum(
-                g.count for g in groups
-                if g.alive and _dist_m(g.lat, g.lng, v["lat"], v["lng"]) <= _VENUE_RADIUS_M
-            )
+    for v in _VENUES:
+        occupied = sum(
+            g.count for g in groups
+            if g.alive and _dist_m(g.lat, g.lng, v["lat"], v["lng"]) <= _VENUE_RADIUS_M
+        )
         result.append({
             "id":       v["id"],
             "name":     v["name"],
@@ -256,17 +190,21 @@ class Group:
 
 class Simulation:
     def __init__(self):
-        self._lock       = threading.Lock()
-        self._running    = False
-        self._tick_count = 0
-        self._history    = []
+        self._lock          = threading.Lock()
+        self._running       = False
+        self._tick_count    = 0
+        self._history       = []
+        self._total_spawned = 0
+        self._arrived       = {}
         self._init_groups()
         threading.Thread(target=self._run, daemon=True).start()
 
     def _init_groups(self):
-        self.groups      = [Group() for _ in range(NUM_GROUPS)]
-        self.phase       = "wander"
-        self._tick_count = 0
+        self.groups         = [Group() for _ in range(NUM_GROUPS)]
+        self.phase          = "wander"
+        self._tick_count    = 0
+        self._total_spawned = sum(g.count for g in self.groups)
+        self._arrived       = {str(n): 0 for n in _RALLY_NODES}
         self._history.clear()
         self._save_history()
 
@@ -289,6 +227,12 @@ class Simulation:
             if not wander and g._path == [] and g._target_node == g.node:
                 g._plan_rally_path()
             g.step(wander)
+
+        # Groups that reached their rally node: absorb into arrived count
+        for g in alive:
+            if not wander and g.node == g.rally_node:
+                self._arrived[str(g.rally_node)] = self._arrived.get(str(g.rally_node), 0) + g.count
+                g.alive = False
 
         # Merge groups whose circles overlap (radius converted to metres)
         alive = [g for g in self.groups if g.alive]
@@ -344,15 +288,15 @@ class Simulation:
     def snapshot(self):
         with self._lock:
             alive = [g for g in self.groups if g.alive]
-            assignments, venue_occupied = compute_assignment(alive, _VENUES)
             return {
-                "phase":        self.phase,
-                "running":      self._running,
-                "tick":        self._tick_count,
-                "total":       sum(g.count for g in alive),
-                "groups":      [g.to_dict() for g in alive],
-                "venues":      venues_snapshot(alive, venue_occupied),
-                "assignments": assignments,
+                "phase":         self.phase,
+                "running":       self._running,
+                "tick":          self._tick_count,
+                "total":         sum(g.count for g in alive),
+                "total_spawned": self._total_spawned,
+                "arrived":       dict(self._arrived),
+                "groups":        [g.to_dict() for g in alive],
+                "venues":        venues_snapshot(alive),
             }
 
 

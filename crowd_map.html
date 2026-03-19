@@ -57,7 +57,6 @@ L.circleMarker([47.47132533866037, 19.06329047791874], { radius: 12, color: '#00
   .bindTooltip('Ericsson', { permanent: true, direction: 'top' })
   .addTo(map);
 
-// Canvas overlay for group rendering
 const canvas = document.getElementById('overlay');
 const ctx    = canvas.getContext('2d');
 const statusEl = document.getElementById('status');
@@ -66,22 +65,53 @@ function resizeCanvas() { canvas.width = window.innerWidth; canvas.height = wind
 resizeCanvas();
 window.addEventListener('resize', resizeCanvas);
 
-// Groups heading to Skypark: Nokia blue shades; heading to Ericsson: Ericsson blue shades
-const SKYPARK_NODE = '6782272690';
-function groupColor(g) {
-  const t = Math.min(g.count / 60, 1);
-  if (g.rally_node === SKYPARK_NODE) {
-    // Nokia: dark blue -> light cyan-blue
-    const r = Math.round(0  + 100 * t);
-    const gr = Math.round(100 + 100 * t);
-    const b  = Math.round(160 + 80  * t);
-    return `rgba(${r},${gr},${b},0.85)`;
-  } else {
-    // Ericsson: deep blue -> bright Ericsson blue
-    const r = Math.round(0  +  40 * t);
-    const gr = Math.round(60 + 100 * t);
-    const b  = Math.round(200 +  55 * t);
-    return `rgba(${r},${gr},${b},0.85)`;
+const NOKIA_RALLY_NODE    = '6782272690';
+const ERICSSON_RALLY_NODE = '9921293897';
+
+let nokiaZone = null, ericssonZone = null;
+
+async function loadZones() {
+  const [nz, ez] = await Promise.all([
+    fetch('/nokia_zone.json').then(r => r.json()),
+    fetch('/ericsson_zone.json').then(r => r.json())
+  ]);
+  nokiaZone    = nz;
+  ericssonZone = ez;
+}
+
+// Draw zone streets filled from centre outward based on arrived count
+function drawZone(zone, arrived, totalForZone) {
+  if (!zone) return;
+  const segs = zone.segments;  // sorted by d ascending
+  // How many metres of street are filled?
+  // Each person occupies ~1.5m of street length
+  const filledLen = arrived * 1.5;
+  let cumLen = 0;
+  for (const s of segs) {
+    const pa = map.latLngToContainerPoint(s.a);
+    const pb = map.latLngToContainerPoint(s.b);
+    const prevCum = cumLen;
+    cumLen += s.len;
+    const t = Math.min(cumLen / Math.max(filledLen, 1), 1);
+    const filled = cumLen <= filledLen;  // fully filled segment
+    const partial = !filled && prevCum < filledLen;  // partially filled
+
+    if (!filled && !partial) {
+      // Empty street — dim grey
+      ctx.beginPath(); ctx.moveTo(pa.x, pa.y); ctx.lineTo(pb.x, pb.y);
+      ctx.strokeStyle = 'rgba(80,80,80,0.35)';
+      ctx.lineWidth = 1.5; ctx.stroke();
+      continue;
+    }
+
+    // Colour by distance from centre: close=red, mid=orange/yellow, far=green
+    const dRatio = s.d / zone.radius;  // 0=centre, 1=edge
+    const r = dRatio < 0.5 ? 255 : Math.round(255 * (1 - (dRatio - 0.5) * 1.2));
+    const g = Math.round(60 + 160 * dRatio);
+    const alpha = filled ? 0.9 : 0.5;
+    ctx.beginPath(); ctx.moveTo(pa.x, pa.y); ctx.lineTo(pb.x, pb.y);
+    ctx.strokeStyle = `rgba(${r},${g},20,${alpha})`;
+    ctx.lineWidth = filled ? 3.5 : 2; ctx.stroke();
   }
 }
 
@@ -147,15 +177,22 @@ function drawVenues(venues) {
 
 function draw(data) {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
-  // Draw groups first (bottom layer)
+
+  // Fill streets based on arrived counts
+  const arrived = data.arrived || {};
+  drawZone(nokiaZone,    arrived[NOKIA_RALLY_NODE]    || 0, data.total_spawned * 0.65);
+  drawZone(ericssonZone, arrived[ERICSSON_RALLY_NODE] || 0, data.total_spawned * 0.35);
+
+  // Draw still-moving groups
   for (const g of data.groups) {
     const p = map.latLngToContainerPoint([g.lat, g.lng]);
     const r = g.radius;
+    const isNokia = g.rally_node === NOKIA_RALLY_NODE;
     ctx.beginPath();
     ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
-    ctx.fillStyle = groupColor(g);
+    ctx.fillStyle = isNokia ? 'rgba(0,120,200,0.82)' : 'rgba(0,60,200,0.82)';
     ctx.fill();
-    ctx.strokeStyle = 'rgba(255,255,255,0.8)';
+    ctx.strokeStyle = 'rgba(255,255,255,0.7)';
     ctx.lineWidth = 1.5;
     ctx.stroke();
     ctx.fillStyle = 'white';
@@ -164,32 +201,12 @@ function draw(data) {
     ctx.textBaseline = 'middle';
     ctx.fillText(g.count, p.x, p.y);
   }
-  // Draw assignment edges (group -> tower), thickness and opacity by count
-  if (data.assignments && data.groups && data.venues) {
-    const maxCount = Math.max(1, ...data.assignments.map(a => a.count));
-    for (const a of data.assignments) {
-      const g = data.groups[a.groupIndex];
-      const v = data.venues.find(vn => vn.id === a.venueId);
-      if (!g || !v) continue;
-      const pFrom = map.latLngToContainerPoint([g.lat, g.lng]);
-      const pTo = map.latLngToContainerPoint([v.lat, v.lng]);
-      const t = Math.min(a.count / maxCount, 1);
-      const lineWidth = Math.max(1, 0.5 + t * 4);
-      const alpha = 0.35 + 0.45 * t;
-      ctx.beginPath();
-      ctx.moveTo(pFrom.x, pFrom.y);
-      ctx.lineTo(pTo.x, pTo.y);
-      ctx.strokeStyle = `rgba(100,180,255,${alpha})`;
-      ctx.lineWidth = lineWidth;
-      ctx.stroke();
-    }
-  }
-  // Draw venue hexagons on top
+
   if (data.venues) drawVenues(data.venues);
 }
 
 function updateStatus(data) {
-  const phase = data.phase === 'wander' ? '🚶 Wandering' : '🏃 Rallying → Heroes\' Square';
+  const phase = data.phase === 'wander' ? '🚶 Wandering' : '🏃 Rallying';
   const state = data.running ? '' : ' ⏸';
   statusEl.textContent = `${phase}${state}   |   Groups: ${data.groups.length}   |   People: ${data.total}   |   Tick: ${data.tick}`;
   const btn = document.getElementById('btn-start');
@@ -198,7 +215,6 @@ function updateStatus(data) {
   btn.classList.toggle('paused', !data.running);
 }
 
-// Send control action to server
 async function control(action) {
   try {
     const res  = await fetch('/api/control', {
@@ -222,7 +238,6 @@ document.getElementById('btn-step').addEventListener('click',   () => control('s
 document.getElementById('btn-rewind').addEventListener('click', () => control('rewind'));
 document.getElementById('btn-reset').addEventListener('click',  () => control('reset'));
 
-// Poll server for latest state
 async function poll() {
   try {
     const res  = await fetch('/api/groups');
@@ -235,7 +250,7 @@ async function poll() {
   setTimeout(poll, 100);
 }
 
-map.whenReady(poll);
+map.whenReady(async () => { await loadZones(); poll(); });
 </script>
 </body>
 </html>
