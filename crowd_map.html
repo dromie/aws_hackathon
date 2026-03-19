@@ -40,10 +40,10 @@
 </div>
 
 <script>
-const RALLY = [47.5149, 18.5763];
+const RALLY = [47.4871, 19.0707]; // Nokia Skypark
 
 // Map setup
-const map = L.map('map', { zoomControl: true }).setView([47.5140, 18.5760], 15);
+const map = L.map('map', { zoomControl: true }).setView([47.4875, 19.0680], 15);
 L.tileLayer('http://localhost:8765/{z}/{x}/{y}.png', {
   attribution: '© OpenStreetMap contributors',
   maxZoom: 15, minZoom: 15
@@ -51,7 +51,7 @@ L.tileLayer('http://localhost:8765/{z}/{x}/{y}.png', {
 
 // Rally point marker
 L.circleMarker(RALLY, { radius: 12, color: 'red', weight: 2, fill: false, dashArray: '5,4' })
-  .bindTooltip('Rally point', { permanent: true, direction: 'top' })
+  .bindTooltip('Nokia Skypark', { permanent: true, direction: 'top' })
   .addTo(map);
 
 // Canvas overlay for group rendering

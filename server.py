@@ -17,9 +17,9 @@ PORT = 8765
 BASE = os.path.dirname(os.path.abspath(__file__))
 
 # --- Simulation constants ---
-RALLY      = (47.5149, 18.5763)
-BOUNDS_LAT = (47.503, 47.525)
-BOUNDS_LNG = (18.563, 18.589)
+RALLY      = (47.4871, 19.0707)  # Nokia Skypark
+BOUNDS_LAT = (47.479, 47.496)
+BOUNDS_LNG = (19.058, 19.080)
 WANDER_SEC = 6
 NUM_GROUPS = 12
 TICK_SEC   = 0.033  # ~30 fps
