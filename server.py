@@ -69,6 +69,43 @@ def _nearest_node(lat, lng):
 _RALLY_NODE = _nearest_node(*RALLY)
 
 
+# --- Venue cells ---
+# Each cell has a name, position, capacity, and dynamically computed occupancy
+_VENUES = [
+    {"id": 0, "name": "Corvin Plaza",         "lat": 47.4847519, "lng": 19.066757,  "capacity": 800},
+    {"id": 1, "name": "Corvin Mozi",           "lat": 47.4859913, "lng": 19.0669404, "capacity": 400},
+    {"id": 2, "name": "Teleki László tér",     "lat": 47.4883954, "lng": 19.0703167, "capacity": 300},
+    {"id": 3, "name": "Mátyás tér",            "lat": 47.4897285, "lng": 19.0730806, "capacity": 250},
+    {"id": 4, "name": "Corvin sétány",         "lat": 47.4863303, "lng": 19.0687093, "capacity": 500},
+    {"id": 5, "name": "Szigony utca park",     "lat": 47.4835954, "lng": 19.0703666, "capacity": 150},
+    {"id": 6, "name": "Lujza utca tér",        "lat": 47.4870619, "lng": 19.064957,  "capacity": 200},
+    {"id": 7, "name": "Illés utca sarok",      "lat": 47.4833486, "lng": 19.0730985, "capacity": 120},
+    {"id": 8, "name": "Futó utca tér",         "lat": 47.4845698, "lng": 19.0758385, "capacity": 180},
+    {"id": 9, "name": "Nokia Skypark előtér",  "lat": 47.4860566, "lng": 19.0792738, "capacity": 600},
+]
+# Capture radius in metres: groups within this distance count toward occupancy
+_VENUE_RADIUS_M = 80
+
+
+def venues_snapshot(groups):
+    """Compute occupancy for each venue based on current group positions."""
+    result = []
+    for v in _VENUES:
+        occupied = sum(
+            g.count for g in groups
+            if g.alive and _dist_m(g.lat, g.lng, v["lat"], v["lng"]) <= _VENUE_RADIUS_M
+        )
+        result.append({
+            "id":       v["id"],
+            "name":     v["name"],
+            "lat":      v["lat"],
+            "lng":      v["lng"],
+            "capacity": v["capacity"],
+            "occupied": occupied,
+        })
+    return result
+
+
 class Group:
     def __init__(self, node_id=None, count=None):
         self.node  = node_id if node_id is not None else random.choice(_node_ids)
@@ -238,6 +275,7 @@ class Simulation:
                 "tick":    self._tick_count,
                 "total":   sum(g.count for g in alive),
                 "groups":  [g.to_dict() for g in alive],
+                "venues":  venues_snapshot(alive),
             }
 
 
@@ -253,6 +291,17 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     def do_GET(self):
         if self.path == '/api/groups':
             body = json.dumps(sim.snapshot(), ensure_ascii=False).encode()
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
+        if self.path == '/api/venues':
+            with sim._lock:
+                alive = [g for g in sim.groups if g.alive]
+                body  = json.dumps(venues_snapshot(alive), ensure_ascii=False).encode()
             self.send_response(200)
             self.send_header('Content-Type', 'application/json')
             self.send_header('Access-Control-Allow-Origin', '*')

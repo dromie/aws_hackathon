@@ -69,9 +69,78 @@ function groupColor(count) {
   return `rgba(${Math.round(30+225*t)},${Math.round(180*(1-t))},${Math.round(220*(1-t))},0.75)`;
 }
 
-function draw(groups) {
+// Venue fill color: green -> yellow -> red based on occupancy ratio
+function venueColor(occupied, capacity) {
+  const t = Math.min(occupied / capacity, 1);
+  if (t < 0.5) {
+    // green -> yellow
+    const r = Math.round(255 * (t * 2));
+    return { fill: `rgba(${r},200,50,0.55)`, stroke: `rgba(${r},200,50,0.9)` };
+  } else {
+    // yellow -> red
+    const r = 255;
+    const g = Math.round(200 * (1 - (t - 0.5) * 2));
+    return { fill: `rgba(${r},${g},30,0.55)`, stroke: `rgba(${r},${g},30,0.9)` };
+  }
+}
+
+function drawHex(x, y, r) {
+  ctx.beginPath();
+  for (let i = 0; i < 6; i++) {
+    const a = Math.PI / 180 * (60 * i - 30);
+    i === 0 ? ctx.moveTo(x + r * Math.cos(a), y + r * Math.sin(a))
+            : ctx.lineTo(x + r * Math.cos(a), y + r * Math.sin(a));
+  }
+  ctx.closePath();
+}
+
+function drawVenues(venues) {
+  for (const v of venues) {
+    const p   = map.latLngToContainerPoint([v.lat, v.lng]);
+    const r   = Math.round(10 + Math.sqrt(v.capacity) * 0.9);
+    const c   = venueColor(v.occupied, v.capacity);
+    const ratio = Math.min(v.occupied / v.capacity, 1);
+
+    // Background hex
+    drawHex(p.x, p.y, r);
+    ctx.fillStyle = c.fill;
+    ctx.fill();
+    ctx.strokeStyle = c.stroke;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // Occupancy fill: clip to hex, fill proportional slice from bottom
+    if (ratio > 0) {
+      ctx.save();
+      drawHex(p.x, p.y, r - 1);
+      ctx.clip();
+      ctx.fillStyle = c.stroke.replace('0.9', '0.45');
+      ctx.fillRect(p.x - r, p.y + r - ratio * r * 2, r * 2, r * 2);
+      ctx.restore();
+    }
+
+    // Redraw hex border on top
+    drawHex(p.x, p.y, r);
+    ctx.strokeStyle = c.stroke;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // Labels
+    ctx.fillStyle = 'white';
+    ctx.font = 'bold 10px Arial';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(`${v.occupied}/${v.capacity}`, p.x, p.y);
+    ctx.font = '9px Arial';
+    ctx.fillStyle = 'rgba(255,255,255,0.85)';
+    ctx.fillText(v.name, p.x, p.y + r + 9);
+  }
+}
+
+function draw(data) {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
-  for (const g of groups) {
+  if (data.venues) drawVenues(data.venues);
+  for (const g of data.groups) {
     const p = map.latLngToContainerPoint([g.lat, g.lng]);
     const r = g.radius;
     ctx.beginPath();
@@ -108,7 +177,7 @@ async function control(action) {
       body: JSON.stringify({ action })
     });
     const data = await res.json();
-    draw(data.groups);
+    draw(data);
     updateStatus(data);
   } catch(e) {
     statusEl.textContent = 'Server unreachable...';
@@ -128,7 +197,7 @@ async function poll() {
   try {
     const res  = await fetch('/api/groups');
     const data = await res.json();
-    draw(data.groups);
+    draw(data);
     updateStatus(data);
   } catch(e) {
     statusEl.textContent = 'Server unreachable...';
