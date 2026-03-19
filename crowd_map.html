@@ -9,11 +9,11 @@
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: Arial, sans-serif; background: #111; }
   #map { width: 100vw; height: 100vh; }
-  #overlay { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; pointer-events: none; }
+  #overlay { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; pointer-events: none; z-index: 1000; }
   #status {
     position: fixed; bottom: 0; left: 0; right: 0;
     background: rgba(20,20,20,0.85); color: #ddd;
-    padding: 8px 16px; font-size: 14px; z-index: 1000;
+    padding: 8px 16px; font-size: 14px; z-index: 1001;
   }
 </style>
 </head>
