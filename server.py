@@ -18,7 +18,10 @@ PORT = 8765
 BASE = os.path.dirname(os.path.abspath(__file__))
 
 # --- Simulation constants ---
-RALLY      = (47.4860983, 19.0788411)  # Nokia Skypark (nearest road node)
+RALLY_POINTS = [
+    (47.4860983, 19.0788411),  # Nokia Skypark
+    (47.4713629, 19.0632207),  # Ericsson
+]
 WANDER_SEC = 6
 NUM_GROUPS = 24
 TICK_SEC   = 0.033  # ~30 fps
@@ -65,23 +68,28 @@ def _nearest_node(lat, lng):
     return best
 
 
-# Pre-compute rally node once
-_RALLY_NODE = _nearest_node(*RALLY)
+# Pre-compute rally nodes once
+_RALLY_NODES = [_nearest_node(*rp) for rp in RALLY_POINTS]
 
 
 # --- Venue cells ---
 # Each cell has a name, position, capacity, and dynamically computed occupancy
 _VENUES = [
-    {"id": 0, "name": "Corvin Plaza",         "lat": 47.4847519, "lng": 19.066757,  "capacity": 800},
-    {"id": 1, "name": "Corvin Mozi",           "lat": 47.4859913, "lng": 19.0669404, "capacity": 400},
-    {"id": 2, "name": "Teleki László tér",     "lat": 47.4883954, "lng": 19.0703167, "capacity": 300},
-    {"id": 3, "name": "Mátyás tér",            "lat": 47.4897285, "lng": 19.0730806, "capacity": 250},
-    {"id": 4, "name": "Corvin sétány",         "lat": 47.4863303, "lng": 19.0687093, "capacity": 500},
-    {"id": 5, "name": "Szigony utca park",     "lat": 47.4835954, "lng": 19.0703666, "capacity": 150},
-    {"id": 6, "name": "Lujza utca tér",        "lat": 47.4870619, "lng": 19.064957,  "capacity": 200},
-    {"id": 7, "name": "Illés utca sarok",      "lat": 47.4833486, "lng": 19.0730985, "capacity": 120},
-    {"id": 8, "name": "Futó utca tér",         "lat": 47.4845698, "lng": 19.0758385, "capacity": 180},
-    {"id": 9, "name": "Nokia Skypark előtér",  "lat": 47.4860566, "lng": 19.0792738, "capacity": 600},
+    {"id":  0, "name": "Kopaszi gát déli csúcs",  "lat": 47.4644356, "lng": 19.052092,  "capacity": 200},
+    {"id":  1, "name": "Kopaszi gát északi rész", "lat": 47.46944,   "lng": 19.0566328, "capacity": 150},
+    {"id":  2, "name": "Ipar utca sarok",          "lat": 47.483705,  "lng": 19.0474799, "capacity": 120},
+    {"id":  3, "name": "Bercsényi utca park",      "lat": 47.4823197, "lng": 19.0550799, "capacity": 150},
+    {"id":  4, "name": "Lágymányosi híd lába",    "lat": 47.4798053, "lng": 19.0502945, "capacity": 200},
+    {"id":  5, "name": "Boráros tér",             "lat": 47.4822406, "lng": 19.0617938, "capacity": 350},
+    {"id":  6, "name": "Lujza utca tér",           "lat": 47.4870619, "lng": 19.064957,  "capacity": 200},
+    {"id":  7, "name": "Corvin Plaza",             "lat": 47.4847519, "lng": 19.066757,  "capacity": 800},
+    {"id":  8, "name": "Teleki László tér",        "lat": 47.4884021, "lng": 19.0703932, "capacity": 300},
+    {"id":  9, "name": "Mátyás tér",               "lat": 47.4897285, "lng": 19.0730806, "capacity": 250},
+    {"id": 10, "name": "Illatos út sarok",         "lat": 47.4832,    "lng": 19.0850,    "capacity": 600},
+    {"id": 11, "name": "Orczy tér",               "lat": 47.4893472, "lng": 19.0821294, "capacity": 400},
+    {"id": 12, "name": "Dandár utca",             "lat": 47.4760,    "lng": 19.0680,    "capacity": 300},
+    {"id": 13, "name": "Gubacsi út sarok",         "lat": 47.4657381, "lng": 19.0817743, "capacity": 120},
+    {"id": 14, "name": "Sorokssári út park",       "lat": 47.472192,  "lng": 19.0778036, "capacity": 180},
 ]
 # Capture radius in metres: groups within this distance count toward occupancy
 _VENUE_RADIUS_M = 80
@@ -172,13 +180,14 @@ def venues_snapshot(groups, venue_occupied=None):
 
 
 class Group:
-    def __init__(self, node_id=None, count=None):
-        self.node  = node_id if node_id is not None else random.choice(_node_ids)
-        self.count = count if count is not None else random.randint(3, 5)
-        self.alive = True
+    def __init__(self, node_id=None, count=None, rally_node=None):
+        self.node        = node_id if node_id is not None else random.choice(_node_ids)
+        self.count       = count if count is not None else random.randint(3, 5)
+        self.rally_node  = rally_node if rally_node is not None else (_RALLY_NODES[0] if random.random() < 0.65 else _RALLY_NODES[1])
+        self.alive       = True
         n = G.nodes[self.node]
         self.lat, self.lng = n['lat'], n['lng']
-        self._path = []       # list of node ids to follow (rally mode)
+        self._path        = []
         self._target_node = None
         self._pick_wander_target()
 
@@ -188,7 +197,7 @@ class Group:
 
     def _plan_rally_path(self):
         try:
-            self._path = nx.shortest_path(G, self.node, _RALLY_NODE, weight='weight')[1:]
+            self._path = nx.shortest_path(G, self.node, self.rally_node, weight='weight')[1:]
         except nx.NetworkXNoPath:
             self._path = []
         self._target_node = self._path.pop(0) if self._path else self.node
@@ -230,16 +239,17 @@ class Group:
 
     def to_dict(self):
         return {
-            "lat":    round(self.lat, 6),
-            "lng":    round(self.lng, 6),
-            "count":  self.count,
-            "radius": round(self.radius, 1),
-            "node":   self.node,
+            "lat":        round(self.lat, 6),
+            "lng":        round(self.lng, 6),
+            "count":      self.count,
+            "radius":     round(self.radius, 1),
+            "node":       self.node,
+            "rally_node": self.rally_node,
         }
 
     @staticmethod
     def from_dict(d):
-        g = Group(node_id=d['node'], count=d['count'])
+        g = Group(node_id=d['node'], count=d['count'], rally_node=d['rally_node'])
         g.lat, g.lng = d['lat'], d['lng']
         return g
 

@@ -14,14 +14,14 @@ env:
   PORT: "8765"
   CPU: "512"
   MEMORY: "1024"
-  ARCH: ARM64
+  ARCH: X86_64
 
 permissions:
   id-token: write
   contents: read
 
 jobs:
-  deploy:
+  push-image:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -37,21 +37,31 @@ jobs:
         id: ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Set image URI
-        run: echo "IMAGE=${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPO }}:${{ github.sha }}" >> "$GITHUB_ENV"
-
       - name: Build & push image
         uses: docker/build-push-action@v6
         with:
           context: .
           push: true
-          platforms: linux/arm64
+          platforms: linux/amd64
           tags: |
-            ${{ env.IMAGE }}
+            ${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPO }}:${{ github.sha }}
             ${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPO }}:latest
 
-      - name: Get execution role ARN
+  deploy-ecs:
+    needs: push-image
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          audience: sts.amazonaws.com
+
+      - name: Get image URI and role ARN
         run: |
+          ACCOUNT=$(aws sts get-caller-identity --query Account --output text)
+          echo "IMAGE=${ACCOUNT}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO}:${GITHUB_SHA}" >> "$GITHUB_ENV"
           ROLE_ARN=$(aws iam get-role --role-name ecsTaskExecutionRole --query 'Role.Arn' --output text)
           echo "ROLE_ARN=$ROLE_ARN" >> "$GITHUB_ENV"
 

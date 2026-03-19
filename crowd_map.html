@@ -43,15 +43,18 @@
 const RALLY = [47.48616316916723, 19.079061866933007]; // Nokia Skypark
 
 // Map setup
-const map = L.map('map', { zoomControl: true }).setView([47.4875, 19.0680], 15);
+const map = L.map('map', { zoomControl: true }).setView([47.479, 19.0680], 15);
 L.tileLayer(`${location.protocol}//${location.host}/{z}/{x}/{y}.png`, {
   attribution: '© OpenStreetMap contributors',
   maxZoom: 15, minZoom: 15
 }).addTo(map);
 
-// Rally point marker
-L.circleMarker(RALLY, { radius: 12, color: 'red', weight: 2, fill: false, dashArray: '5,4' })
+// Rally point markers
+L.circleMarker([47.48616316916723, 19.079061866933007], { radius: 12, color: '#0064A0', weight: 2, fill: false, dashArray: '5,4' })
   .bindTooltip('Nokia Skypark', { permanent: true, direction: 'top' })
+  .addTo(map);
+L.circleMarker([47.47132533866037, 19.06329047791874], { radius: 12, color: '#003CC8', weight: 2, fill: false, dashArray: '5,4' })
+  .bindTooltip('Ericsson', { permanent: true, direction: 'top' })
   .addTo(map);
 
 // Canvas overlay for group rendering
@@ -63,10 +66,23 @@ function resizeCanvas() { canvas.width = window.innerWidth; canvas.height = wind
 resizeCanvas();
 window.addEventListener('resize', resizeCanvas);
 
-// Color shifts from blue to red as group grows
-function groupColor(count) {
-  const t = Math.min(count / 60, 1);
-  return `rgba(${Math.round(30+225*t)},${Math.round(180*(1-t))},${Math.round(220*(1-t))},0.75)`;
+// Groups heading to Skypark: Nokia blue shades; heading to Ericsson: Ericsson blue shades
+const SKYPARK_NODE = '6782272690';
+function groupColor(g) {
+  const t = Math.min(g.count / 60, 1);
+  if (g.rally_node === SKYPARK_NODE) {
+    // Nokia: dark blue -> light cyan-blue
+    const r = Math.round(0  + 100 * t);
+    const gr = Math.round(100 + 100 * t);
+    const b  = Math.round(160 + 80  * t);
+    return `rgba(${r},${gr},${b},0.85)`;
+  } else {
+    // Ericsson: deep blue -> bright Ericsson blue
+    const r = Math.round(0  +  40 * t);
+    const gr = Math.round(60 + 100 * t);
+    const b  = Math.round(200 +  55 * t);
+    return `rgba(${r},${gr},${b},0.85)`;
+  }
 }
 
 // Venue fill color: green -> yellow -> red based on occupancy ratio
@@ -137,7 +153,7 @@ function draw(data) {
     const r = g.radius;
     ctx.beginPath();
     ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
-    ctx.fillStyle = groupColor(g.count);
+    ctx.fillStyle = groupColor(g);
     ctx.fill();
     ctx.strokeStyle = 'rgba(255,255,255,0.8)';
     ctx.lineWidth = 1.5;
