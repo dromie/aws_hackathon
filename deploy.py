@@ -152,6 +152,9 @@ def deploy():
                 "command": ["python", "mcp_server.py"],
                 "portMappings": [{"containerPort": MCP_PORT, "protocol": "tcp"}],
                 "essential": False,
+                "dependsOn": [
+                    {"containerName": CONTAINER, "condition": "START"}
+                ],
                 "environment": [
                     {"name": "SIMULATION_URL", "value": f"http://localhost:{PORT}"}
                 ],

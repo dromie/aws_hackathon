@@ -102,6 +102,9 @@ jobs:
                 "command": ["python", "mcp_server.py"],
                 "portMappings": [{"containerPort": '"$MCP_PORT"', "protocol": "tcp"}],
                 "essential": false,
+                "dependsOn": [
+                  {"containerName": "'"$CONTAINER"'", "condition": "START"}
+                ],
                 "environment": [
                   {"name": "SIMULATION_URL", "value": "http://localhost:'"$PORT"'"}
                 ],
