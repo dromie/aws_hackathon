@@ -1,0 +1,264 @@
+{
+  "edges": [
+    {
+      "from": 8,
+      "to": 9,
+      "distance_m": 250.1
+    },
+    {
+      "from": 6,
+      "to": 7,
+      "distance_m": 290.3
+    },
+    {
+      "from": 6,
+      "to": 8,
+      "distance_m": 434.8
+    },
+    {
+      "from": 3,
+      "to": 4,
+      "distance_m": 455.5
+    },
+    {
+      "from": 5,
+      "to": 7,
+      "distance_m": 465.9
+    },
+    {
+      "from": 2,
+      "to": 4,
+      "distance_m": 482.5
+    },
+    {
+      "from": 7,
+      "to": 8,
+      "distance_m": 489.3
+    },
+    {
+      "from": 3,
+      "to": 5,
+      "distance_m": 504.6
+    },
+    {
+      "from": 0,
+      "to": 1,
+      "distance_m": 652.8
+    },
+    {
+      "from": 6,
+      "to": 9,
+      "distance_m": 678.6
+    },
+    {
+      "from": 9,
+      "to": 11,
+      "distance_m": 681.2
+    },
+    {
+      "from": 10,
+      "to": 11,
+      "distance_m": 716.8
+    },
+    {
+      "from": 7,
+      "to": 9,
+      "distance_m": 729.4
+    },
+    {
+      "from": 13,
+      "to": 14,
+      "distance_m": 777.2
+    },
+    {
+      "from": 5,
+      "to": 12,
+      "distance_m": 836.1
+    },
+    {
+      "from": 12,
+      "to": 14,
+      "distance_m": 849.8
+    },
+    {
+      "from": 8,
+      "to": 11,
+      "distance_m": 888.1
+    },
+    {
+      "from": 4,
+      "to": 5,
+      "distance_m": 905.6
+    },
+    {
+      "from": 5,
+      "to": 8,
+      "distance_m": 941.8
+    },
+    {
+      "from": 2,
+      "to": 5,
+      "distance_m": 1087.9
+    },
+    {
+      "from": 1,
+      "to": 12,
+      "distance_m": 1123.4
+    },
+    {
+      "from": 5,
+      "to": 9,
+      "distance_m": 1188.5
+    },
+    {
+      "from": 3,
+      "to": 12,
+      "distance_m": 1198.6
+    },
+    {
+      "from": 6,
+      "to": 12,
+      "distance_m": 1251.1
+    },
+    {
+      "from": 3,
+      "to": 8,
+      "distance_m": 1334.7
+    },
+    {
+      "from": 10,
+      "to": 14,
+      "distance_m": 1338.2
+    },
+    {
+      "from": 7,
+      "to": 10,
+      "distance_m": 1381.7
+    },
+    {
+      "from": 4,
+      "to": 12,
+      "distance_m": 1396.3
+    },
+    {
+      "from": 1,
+      "to": 3,
+      "distance_m": 1436.9
+    },
+    {
+      "from": 2,
+      "to": 7,
+      "distance_m": 1453.2
+    },
+    {
+      "from": 10,
+      "to": 12,
+      "distance_m": 1507.7
+    },
+    {
+      "from": 3,
+      "to": 9,
+      "distance_m": 1583.7
+    },
+    {
+      "from": 2,
+      "to": 12,
+      "distance_m": 1764.1
+    },
+    {
+      "from": 1,
+      "to": 7,
+      "distance_m": 1864.9
+    },
+    {
+      "from": 10,
+      "to": 13,
+      "distance_m": 1956.8
+    },
+    {
+      "from": 9,
+      "to": 14,
+      "distance_m": 1982.0
+    },
+    {
+      "from": 4,
+      "to": 9,
+      "distance_m": 2037.0
+    },
+    {
+      "from": 0,
+      "to": 5,
+      "distance_m": 2109.8
+    },
+    {
+      "from": 4,
+      "to": 14,
+      "distance_m": 2234.1
+    },
+    {
+      "from": 7,
+      "to": 13,
+      "distance_m": 2396.6
+    },
+    {
+      "from": 1,
+      "to": 9,
+      "distance_m": 2572.4
+    },
+    {
+      "from": 11,
+      "to": 13,
+      "distance_m": 2625.3
+    },
+    {
+      "from": 8,
+      "to": 13,
+      "distance_m": 2661.3
+    },
+    {
+      "from": 0,
+      "to": 6,
+      "distance_m": 2695.3
+    },
+    {
+      "from": 3,
+      "to": 13,
+      "distance_m": 2724.9
+    },
+    {
+      "from": 9,
+      "to": 13,
+      "distance_m": 2746.5
+    },
+    {
+      "from": 2,
+      "to": 10,
+      "distance_m": 2820.0
+    },
+    {
+      "from": 4,
+      "to": 13,
+      "distance_m": 2836.4
+    },
+    {
+      "from": 1,
+      "to": 11,
+      "distance_m": 2927.7
+    },
+    {
+      "from": 0,
+      "to": 9,
+      "distance_m": 3224.6
+    },
+    {
+      "from": 0,
+      "to": 10,
+      "distance_m": 3235.9
+    },
+    {
+      "from": 0,
+      "to": 11,
+      "distance_m": 3573.4
+    }
+  ]
+}

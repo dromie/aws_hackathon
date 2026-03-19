@@ -76,14 +76,17 @@ const NOKIA_RALLY_NODE    = '6782272690';
 const ERICSSON_RALLY_NODE = '9921293897';
 
 let nokiaZone = null, ericssonZone = null;
+let towerNetwork = null;
 
 async function loadZones() {
-  const [nz, ez] = await Promise.all([
+  const [nz, ez, tn] = await Promise.all([
     fetch('/nokia_zone.json').then(r => r.json()),
-    fetch('/ericsson_zone.json').then(r => r.json())
+    fetch('/ericsson_zone.json').then(r => r.json()),
+    fetch('/tower_network.json').then(r => r.json())
   ]);
   nokiaZone    = nz;
   ericssonZone = ez;
+  towerNetwork = tn;
 }
 
 // Draw zone streets filled from centre outward based on arrived count
@@ -189,6 +192,24 @@ function draw(data) {
   const arrived = data.arrived || {};
   drawZone(nokiaZone,    arrived[NOKIA_RALLY_NODE]    || 0, data.total_spawned * 0.65);
   drawZone(ericssonZone, arrived[ERICSSON_RALLY_NODE] || 0, data.total_spawned * 0.35);
+
+  // Draw tower network topology
+  if (towerNetwork && data.venues) {
+    const byId = {};
+    for (const v of data.venues) byId[v.id] = v;
+    for (const e of towerNetwork.edges) {
+      const a = byId[e.from], b = byId[e.to];
+      if (!a || !b) continue;
+      const pa = map.latLngToContainerPoint([a.lat, a.lng]);
+      const pb = map.latLngToContainerPoint([b.lat, b.lng]);
+      ctx.beginPath();
+      ctx.moveTo(pa.x, pa.y);
+      ctx.lineTo(pb.x, pb.y);
+      ctx.strokeStyle = 'rgba(0,200,255,0.35)';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+    }
+  }
 
   // Draw still-moving groups
   for (const g of data.groups) {

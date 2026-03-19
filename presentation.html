@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Crowd Simulation – Architecture Presentation</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Segoe UI', system-ui, sans-serif; background: #0d1117; color: #e6edf3; overflow: hidden; }
+
+  /* ── Slide container ── */
+  .slide { display: none; width: 100vw; height: 100vh; flex-direction: column; justify-content: center; align-items: center; padding: 60px; }
+  .slide.active { display: flex; }
+
+  /* ── Typography ── */
+  h1 { font-size: 3rem; margin-bottom: 24px; color: #58a6ff; }
+  h2 { font-size: 2.2rem; margin-bottom: 20px; color: #58a6ff; }
+  p, li { font-size: 1.3rem; line-height: 1.8; color: #c9d1d9; }
+  ul { list-style: none; padding-left: 0; }
+  ul li::before { content: "▸ "; color: #58a6ff; }
+
+  /* ── Navigation ── */
+  .nav { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); display: flex; gap: 16px; z-index: 10; }
+  .nav button { background: #21262d; border: 1px solid #30363d; color: #c9d1d9; padding: 10px 28px; border-radius: 8px; font-size: 1rem; cursor: pointer; transition: background .2s; }
+  .nav button:hover { background: #30363d; }
+  .counter { position: fixed; bottom: 36px; right: 40px; font-size: .9rem; color: #484f58; }
+
+  /* ── SVG diagram styles ── */
+  svg text { font-family: 'Segoe UI', system-ui, sans-serif; }
+  .box { rx: 14; ry: 14; stroke-width: 2; }
+  .arrow { stroke-width: 2.5; fill: none; marker-end: url(#arrowhead); }
+  .arrow-rev { stroke-width: 2.5; fill: none; marker-end: url(#arrowhead); }
+  .label { font-size: 13px; fill: #8b949e; }
+  .box-title { font-size: 15px; font-weight: 600; }
+  .box-sub { font-size: 12px; fill: #8b949e; }
+
+  /* ── Slide-specific ── */
+  .subtitle { font-size: 1.5rem; color: #8b949e; margin-top: 8px; }
+  .two-col { display: flex; gap: 60px; align-items: flex-start; margin-top: 20px; }
+  .two-col > div { flex: 1; }
+</style>
+</head>
+<body>
+
+<!-- ══════════════════════════════════════════════════════════════════
+     SLIDE 1 – Title
+     ══════════════════════════════════════════════════════════════════ -->
+<div class="slide active" id="s1">
+  <h1>Crowd Simulation – Budapest</h1>
+  <p class="subtitle">Architecture &amp; MCP-Driven Analytics</p>
+  <p style="margin-top:40px; color:#484f58; font-size:1rem;">Use ← → or buttons to navigate</p>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════
+     SLIDE 2 – What the system does
+     ══════════════════════════════════════════════════════════════════ -->
+<div class="slide" id="s2">
+  <h2>What the System Does</h2>
+  <ul style="max-width:800px;">
+    <li>Simulates crowds moving toward event venues on a Budapest map</li>
+    <li>Groups of people walk a road graph, wander, then rally to venues</li>
+    <li>Cell towers (venues) have fixed capacity &amp; dynamic occupancy</li>
+    <li>A min-cost flow algorithm assigns every person to the best tower each tick</li>
+    <li>Assignment data is served via HTTP API <em>and</em> MCP tools</li>
+  </ul>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════
+     SLIDE 3 – Full Architecture Diagram
+     ══════════════════════════════════════════════════════════════════ -->
+<div class="slide" id="s3">
+  <h2>System Architecture</h2>
+  <svg viewBox="0 0 960 520" width="900" height="490" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
+        <polygon points="0 0, 10 3.5, 0 7" fill="#58a6ff"/>
+      </marker>
+    </defs>
+
+    <!-- Simulation Server -->
+    <rect class="box" x="360" y="20" width="240" height="100" fill="#161b22" stroke="#f0883e"/>
+    <text class="box-title" x="480" y="58" text-anchor="middle" fill="#f0883e">Simulation Server</text>
+    <text class="box-sub" x="480" y="78" text-anchor="middle">server.py · port 8765</text>
+    <text class="box-sub" x="480" y="95" text-anchor="middle">Road graph · Min-cost flow</text>
+
+    <!-- MCP Server 1 – Group Level -->
+    <rect class="box" x="80" y="220" width="260" height="100" fill="#161b22" stroke="#3fb950"/>
+    <text class="box-title" x="210" y="258" text-anchor="middle" fill="#3fb950">MCP Server 1</text>
+    <text class="box-sub" x="210" y="278" text-anchor="middle">get_assignment_group_level</text>
+    <text class="box-sub" x="210" y="295" text-anchor="middle">Statistical: groups → towers + count</text>
+
+    <!-- MCP Server 2 – Person Level -->
+    <rect class="box" x="620" y="220" width="260" height="100" fill="#161b22" stroke="#3fb950"/>
+    <text class="box-title" x="750" y="258" text-anchor="middle" fill="#3fb950">MCP Server 2</text>
+    <text class="box-sub" x="750" y="278" text-anchor="middle">get_assignment_person_level</text>
+    <text class="box-sub" x="750" y="295" text-anchor="middle">Statistical: per-person → tower</text>
+
+    <!-- LLM -->
+    <rect class="box" x="340" y="400" width="280" height="100" fill="#161b22" stroke="#bc8cff"/>
+    <text class="box-title" x="480" y="438" text-anchor="middle" fill="#bc8cff">LLM (AI Assistant)</text>
+    <text class="box-sub" x="480" y="458" text-anchor="middle">Queries MCP tools for live data</text>
+    <text class="box-sub" x="480" y="475" text-anchor="middle">Analyses &amp; answers user questions</text>
+
+    <!-- Arrows: Sim → MCP servers (HTTP /api/groups) -->
+    <path class="arrow" d="M400,120 Q280,170 260,220" stroke="#f0883e"/>
+    <text class="label" x="270" y="168">HTTP GET /api/groups</text>
+
+    <path class="arrow" d="M560,120 Q680,170 700,220" stroke="#f0883e"/>
+    <text class="label" x="600" y="168">HTTP GET /api/groups</text>
+
+    <!-- Arrows: LLM ↔ MCP servers (MCP protocol) -->
+    <path class="arrow" d="M380,400 Q260,360 260,320" stroke="#bc8cff"/>
+    <text class="label" x="230" y="370">MCP call</text>
+
+    <path class="arrow-rev" d="M210,320 Q210,360 360,410" stroke="#3fb950"/>
+    <text class="label" x="200" y="385" fill="#3fb950">group stats</text>
+
+    <path class="arrow" d="M580,400 Q700,360 700,320" stroke="#bc8cff"/>
+    <text class="label" x="660" y="370">MCP call</text>
+
+    <path class="arrow-rev" d="M750,320 Q750,360 600,410" stroke="#3fb950"/>
+    <text class="label" x="680" y="385" fill="#3fb950">person stats</text>
+  </svg>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════
+     SLIDE 4 – Data Flow Detail
+     ══════════════════════════════════════════════════════════════════ -->
+<div class="slide" id="s4">
+  <h2>Data Flow</h2>
+  <div class="two-col">
+    <div>
+      <p style="color:#f0883e; font-weight:600; margin-bottom:12px;">Simulation Server</p>
+      <ul>
+        <li>Runs the tick loop &amp; road-graph movement</li>
+        <li>Computes min-cost flow assignment each tick</li>
+        <li>Exposes <code>/api/groups</code> with groups, venues, assignments</li>
+      </ul>
+    </div>
+    <div>
+      <p style="color:#3fb950; font-weight:600; margin-bottom:12px;">MCP Servers</p>
+      <ul>
+        <li>Fetch live snapshot from the simulation API</li>
+        <li>Serve statistical data about people's locations</li>
+        <li>Provide tower assignment breakdowns</li>
+        <li>LLM calls tools with zero input — data is always live</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════
+     SLIDE 5 – MCP Tools Detail
+     ══════════════════════════════════════════════════════════════════ -->
+<div class="slide" id="s5">
+  <h2>MCP Tools – Statistical Data</h2>
+  <div class="two-col">
+    <div>
+      <p style="color:#3fb950; font-weight:600; margin-bottom:12px;">get_assignment_group_level</p>
+      <ul>
+        <li>One entry per (group, tower) pair</li>
+        <li>Fields: groupIndex, venueId, count</li>
+        <li>Shows how many people from each group are assigned to each tower</li>
+      </ul>
+      <pre style="background:#161b22; padding:16px; border-radius:8px; margin-top:16px; font-size:.95rem; color:#c9d1d9; border:1px solid #30363d;">
+[
+  { "groupIndex": 0, "venueId": 1, "count": 12 },
+  { "groupIndex": 1, "venueId": 2, "count": 8 }
+]</pre>
+    </div>
+    <div>
+      <p style="color:#3fb950; font-weight:600; margin-bottom:12px;">get_assignment_person_level</p>
+      <ul>
+        <li>One entry per individual person</li>
+        <li>Fields: groupIndex, venueId</li>
+        <li>Expanded view — each count becomes N identical rows</li>
+      </ul>
+      <pre style="background:#161b22; padding:16px; border-radius:8px; margin-top:16px; font-size:.95rem; color:#c9d1d9; border:1px solid #30363d;">
+[
+  { "groupIndex": 0, "venueId": 1 },
+  { "groupIndex": 0, "venueId": 1 },
+  ...  // 12 entries for group 0 → venue 1
+]</pre>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════
+     SLIDE 6 – LLM Integration
+     ══════════════════════════════════════════════════════════════════ -->
+<div class="slide" id="s6">
+  <h2>LLM Integration via MCP</h2>
+  <svg viewBox="0 0 800 300" width="760" height="285" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <marker id="ah2" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
+        <polygon points="0 0, 10 3.5, 0 7" fill="#58a6ff"/>
+      </marker>
+    </defs>
+
+    <!-- User -->
+    <rect class="box" x="20" y="110" width="160" height="80" fill="#161b22" stroke="#8b949e"/>
+    <text class="box-title" x="100" y="148" text-anchor="middle" fill="#c9d1d9">User</text>
+    <text class="box-sub" x="100" y="168" text-anchor="middle">"How crowded is venue 2?"</text>
+
+    <!-- LLM -->
+    <rect class="box" x="280" y="110" width="200" height="80" fill="#161b22" stroke="#bc8cff"/>
+    <text class="box-title" x="380" y="148" text-anchor="middle" fill="#bc8cff">LLM</text>
+    <text class="box-sub" x="380" y="168" text-anchor="middle">Picks the right MCP tool</text>
+
+    <!-- MCP -->
+    <rect class="box" x="580" y="50" width="200" height="80" fill="#161b22" stroke="#3fb950"/>
+    <text class="box-title" x="680" y="82" text-anchor="middle" fill="#3fb950">MCP Server</text>
+    <text class="box-sub" x="680" y="102" text-anchor="middle">group_level / person_level</text>
+
+    <!-- Sim -->
+    <rect class="box" x="580" y="180" width="200" height="80" fill="#161b22" stroke="#f0883e"/>
+    <text class="box-title" x="680" y="212" text-anchor="middle" fill="#f0883e">Simulation</text>
+    <text class="box-sub" x="680" y="232" text-anchor="middle">Live state</text>
+
+    <!-- Arrows -->
+    <line x1="180" y1="150" x2="275" y2="150" stroke="#8b949e" stroke-width="2.5" marker-end="url(#ah2)"/>
+    <text class="label" x="210" y="142">question</text>
+
+    <line x1="480" y1="135" x2="575" y2="95" stroke="#bc8cff" stroke-width="2.5" marker-end="url(#ah2)"/>
+    <text class="label" x="500" y="100">tool call</text>
+
+    <line x1="680" y1="130" x2="680" y2="175" stroke="#f0883e" stroke-width="2.5" marker-end="url(#ah2)"/>
+    <text class="label" x="690" y="158">HTTP</text>
+
+    <line x1="575" y1="70" x2="485" y2="130" stroke="#3fb950" stroke-width="2.5" marker-end="url(#ah2)"/>
+    <text class="label" x="490" y="85" fill="#3fb950">stats response</text>
+  </svg>
+  <p style="margin-top:20px; max-width:700px; text-align:center;">
+    The LLM never touches the simulation directly — it uses MCP tools to get
+    statistical data about people's locations and tower assignments, then reasons over it.
+  </p>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════
+     SLIDE 7 – Summary
+     ══════════════════════════════════════════════════════════════════ -->
+<div class="slide" id="s7">
+  <h2>Key Takeaways</h2>
+  <ul style="max-width:800px;">
+    <li>Simulation server owns the state: movement, road graph, min-cost flow</li>
+    <li>MCP servers are stateless proxies that provide statistical data on demand</li>
+    <li>Two granularities: group-level aggregates and person-level detail</li>
+    <li>LLM consumes live location &amp; assignment stats through MCP protocol</li>
+    <li>Clean separation: simulation ↔ data access ↔ AI reasoning</li>
+  </ul>
+</div>
+
+<!-- ── Navigation ── -->
+<div class="nav">
+  <button onclick="go(-1)">← Prev</button>
+  <button onclick="go(1)">Next →</button>
+</div>
+<div class="counter" id="counter"></div>
+
+<script>
+const slides = document.querySelectorAll('.slide');
+let cur = 0;
+function show(i) {
+  slides[cur].classList.remove('active');
+  cur = (i + slides.length) % slides.length;
+  slides[cur].classList.add('active');
+  document.getElementById('counter').textContent = `${cur + 1} / ${slides.length}`;
+}
+function go(d) { show(cur + d); }
+document.addEventListener('keydown', e => {
+  if (e.key === 'ArrowRight' || e.key === ' ') go(1);
+  else if (e.key === 'ArrowLeft') go(-1);
+});
+show(0);
+</script>
+</body>
+</html>
