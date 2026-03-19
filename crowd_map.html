@@ -1,8 +1,8 @@
 <!DOCTYPE html>
-<html lang="hu">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Tömeg szimuláció – Budapest</title>
+<title>Crowd Simulation – Budapest</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
@@ -10,40 +10,62 @@
   body { font-family: Arial, sans-serif; background: #111; }
   #map { width: 100vw; height: 100vh; }
   #overlay { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; pointer-events: none; z-index: 1000; }
-  #status {
-    position: fixed; bottom: 0; left: 0; right: 0;
-    background: rgba(20,20,20,0.85); color: #ddd;
-    padding: 8px 16px; font-size: 14px; z-index: 1001;
+  #bar {
+    position: fixed; bottom: 0; left: 0; right: 0; z-index: 1001;
+    background: rgba(20,20,20,0.9); color: #ddd;
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 14px; font-size: 13px;
   }
+  #bar button {
+    padding: 5px 14px; border: none; border-radius: 4px;
+    font-size: 13px; font-weight: bold; cursor: pointer;
+    background: #444; color: #fff; transition: background 0.15s;
+  }
+  #bar button:hover { background: #666; }
+  #bar button.active { background: #1a7a3a; }
+  #bar button#btn-stop { background: #7a1a1a; }
+  #bar button#btn-stop:hover { background: #a02020; }
+  #status { flex: 1; }
 </style>
 </head>
 <body>
 
 <div id="map"></div>
 <canvas id="overlay"></canvas>
-<div id="status">Betöltés...</div>
+<div id="bar">
+  <button id="btn-start">▶ Start</button>
+  <button id="btn-stop">⏹ Stop</button>
+  <button id="btn-step">⏭ Step</button>
+  <button id="btn-rewind">⏪ Rewind</button>
+  <button id="btn-reset">↺ Reset</button>
+  <span id="status">Loading...</span>
+</div>
 
 <script>
 const RALLY = [47.5149, 18.5763];
 
+// Map setup
 const map = L.map('map', { zoomControl: true }).setView([47.5140, 18.5760], 15);
 L.tileLayer('http://localhost:8765/{z}/{x}/{y}.png', {
   attribution: '© OpenStreetMap contributors',
   maxZoom: 15, minZoom: 15
 }).addTo(map);
 
+// Rally point marker
 L.circleMarker(RALLY, { radius: 12, color: 'red', weight: 2, fill: false, dashArray: '5,4' })
-  .bindTooltip('Gyülekezési pont', { permanent: true, direction: 'top' })
+  .bindTooltip('Rally point', { permanent: true, direction: 'top' })
   .addTo(map);
 
+// Canvas overlay for group rendering
 const canvas = document.getElementById('overlay');
-const ctx = canvas.getContext('2d');
+const ctx    = canvas.getContext('2d');
 const statusEl = document.getElementById('status');
 
 function resizeCanvas() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
 resizeCanvas();
 window.addEventListener('resize', resizeCanvas);
 
+// Color shifts from blue to red as group grows
 function groupColor(count) {
   const t = Math.min(count / 60, 1);
   return `rgba(${Math.round(30+225*t)},${Math.round(180*(1-t))},${Math.round(220*(1-t))},0.75)`;
@@ -69,15 +91,44 @@ function draw(groups) {
   }
 }
 
-async function poll() {
+function updateStatus(data) {
+  const phase = data.phase === 'wander' ? '🚶 Wandering' : '🏃 Rallying → Heroes\' Square';
+  const state = data.running ? '' : ' ⏸';
+  statusEl.textContent = `${phase}${state}   |   Groups: ${data.groups.length}   |   People: ${data.total}   |   Tick: ${data.tick}`;
+  document.getElementById('btn-start').classList.toggle('active', data.running);
+}
+
+// Send control action to server
+async function control(action) {
   try {
-    const res = await fetch('/api/groups');
+    const res  = await fetch('/api/control', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action })
+    });
     const data = await res.json();
     draw(data.groups);
-    const phaseLabel = data.phase === 'wander' ? '🚶 Bolyongás...' : '🏃 Gyülekezés → Hősök tere';
-    statusEl.textContent = `${phaseLabel}   |   Csoportok: ${data.groups.length}   |   Emberek összesen: ${data.total}`;
+    updateStatus(data);
   } catch(e) {
-    statusEl.textContent = 'Szerver nem elérhető...';
+    statusEl.textContent = 'Server unreachable...';
+  }
+}
+
+document.getElementById('btn-start').addEventListener('click',  () => control('start'));
+document.getElementById('btn-stop').addEventListener('click',   () => control('stop'));
+document.getElementById('btn-step').addEventListener('click',   () => control('step'));
+document.getElementById('btn-rewind').addEventListener('click', () => control('rewind'));
+document.getElementById('btn-reset').addEventListener('click',  () => control('reset'));
+
+// Poll server for latest state
+async function poll() {
+  try {
+    const res  = await fetch('/api/groups');
+    const data = await res.json();
+    draw(data.groups);
+    updateStatus(data);
+  } catch(e) {
+    statusEl.textContent = 'Server unreachable...';
   }
   setTimeout(poll, 100);
 }
