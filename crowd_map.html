@@ -195,17 +195,17 @@ function draw(data) {
     const p = map.latLngToContainerPoint([g.lat, g.lng]);
     const isNokia = g.rally_node === NOKIA_RALLY_NODE;
     const t = Math.min(g.count / 60, 1);
-    const r = isNokia
-      ? Math.round(40 + 215 * t)
-      : Math.round(0  +  60 * t);
-    const gr = isNokia
-      ? Math.round(120 + 80 * t)
-      : Math.round(80 + 120 * t);
-    const b = isNokia ? 220 : 255;
+    const radius = 5 + t * 8;
+    const r  = isNokia ? Math.round(40  + 215 * t) : Math.round(40  +  20 * t);
+    const gr = isNokia ? Math.round(120 +  80 * t) : Math.round(100 + 120 * t);
+    const b  = isNokia ? 220                        : 255;
     ctx.beginPath();
-    ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
-    ctx.fillStyle = `rgba(${r},${gr},${b},0.9)`;
+    ctx.arc(p.x, p.y, radius, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(${r},${gr},${b},0.88)`;
     ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.6)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
   }
 
   if (data.venues) drawVenues(data.venues);
