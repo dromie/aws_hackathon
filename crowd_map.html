@@ -139,7 +139,7 @@ function drawVenues(venues) {
 
 function draw(data) {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
-  if (data.venues) drawVenues(data.venues);
+  // Draw groups first (bottom layer)
   for (const g of data.groups) {
     const p = map.latLngToContainerPoint([g.lat, g.lng]);
     const r = g.radius;
@@ -156,6 +156,8 @@ function draw(data) {
     ctx.textBaseline = 'middle';
     ctx.fillText(g.count, p.x, p.y);
   }
+  // Draw venue hexagons on top
+  if (data.venues) drawVenues(data.venues);
 }
 
 function updateStatus(data) {
