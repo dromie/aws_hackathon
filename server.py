@@ -113,7 +113,7 @@ class Group:
     def __init__(self, node_id=None, count=None, rally_node=None):
         self.node        = node_id if node_id is not None else random.choice(_node_ids)
         self.count       = count if count is not None else random.randint(3, 5)
-        self.rally_node  = rally_node if rally_node is not None else random.choice(_RALLY_NODES)
+        self.rally_node  = rally_node if rally_node is not None else (_RALLY_NODES[0] if random.random() < 0.65 else _RALLY_NODES[1])
         self.alive       = True
         n = G.nodes[self.node]
         self.lat, self.lng = n['lat'], n['lng']
