@@ -18,7 +18,10 @@ PORT = 8765
 BASE = os.path.dirname(os.path.abspath(__file__))
 
 # --- Simulation constants ---
-RALLY      = (47.4860983, 19.0788411)  # Nokia Skypark (nearest road node)
+RALLY_POINTS = [
+    (47.4860983, 19.0788411),  # Nokia Skypark
+    (47.4713629, 19.0632207),  # Ericsson
+]
 WANDER_SEC = 6
 NUM_GROUPS = 24
 TICK_SEC   = 0.033  # ~30 fps
@@ -65,8 +68,8 @@ def _nearest_node(lat, lng):
     return best
 
 
-# Pre-compute rally node once
-_RALLY_NODE = _nearest_node(*RALLY)
+# Pre-compute rally nodes once
+_RALLY_NODES = [_nearest_node(*rp) for rp in RALLY_POINTS]
 
 
 # --- Venue cells ---
@@ -107,13 +110,14 @@ def venues_snapshot(groups):
 
 
 class Group:
-    def __init__(self, node_id=None, count=None):
-        self.node  = node_id if node_id is not None else random.choice(_node_ids)
-        self.count = count if count is not None else random.randint(3, 5)
-        self.alive = True
+    def __init__(self, node_id=None, count=None, rally_node=None):
+        self.node        = node_id if node_id is not None else random.choice(_node_ids)
+        self.count       = count if count is not None else random.randint(3, 5)
+        self.rally_node  = rally_node if rally_node is not None else random.choice(_RALLY_NODES)
+        self.alive       = True
         n = G.nodes[self.node]
         self.lat, self.lng = n['lat'], n['lng']
-        self._path = []       # list of node ids to follow (rally mode)
+        self._path        = []
         self._target_node = None
         self._pick_wander_target()
 
@@ -123,7 +127,7 @@ class Group:
 
     def _plan_rally_path(self):
         try:
-            self._path = nx.shortest_path(G, self.node, _RALLY_NODE, weight='weight')[1:]
+            self._path = nx.shortest_path(G, self.node, self.rally_node, weight='weight')[1:]
         except nx.NetworkXNoPath:
             self._path = []
         self._target_node = self._path.pop(0) if self._path else self.node
@@ -165,16 +169,17 @@ class Group:
 
     def to_dict(self):
         return {
-            "lat":    round(self.lat, 6),
-            "lng":    round(self.lng, 6),
-            "count":  self.count,
-            "radius": round(self.radius, 1),
-            "node":   self.node,
+            "lat":        round(self.lat, 6),
+            "lng":        round(self.lng, 6),
+            "count":      self.count,
+            "radius":     round(self.radius, 1),
+            "node":       self.node,
+            "rally_node": self.rally_node,
         }
 
     @staticmethod
     def from_dict(d):
-        g = Group(node_id=d['node'], count=d['count'])
+        g = Group(node_id=d['node'], count=d['count'], rally_node=d['rally_node'])
         g.lat, g.lng = d['lat'], d['lng']
         return g
 
