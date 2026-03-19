@@ -23,7 +23,9 @@ RALLY_POINTS = [
     (47.4713629, 19.0632207),  # Ericsson
 ]
 WANDER_SEC = 6
-NUM_GROUPS = 24
+NUM_GROUPS        = 24
+DEFAULT_PEOPLE    = 28800   # 300x the original ~96
+DEFAULT_GROUPS    = 720     # 30x the original 24
 TICK_SEC   = 0.033  # ~30 fps
 
 # Conversion factors (approximate at this latitude)
@@ -196,11 +198,18 @@ class Simulation:
         self._history       = []
         self._total_spawned = 0
         self._arrived       = {}
+        self._num_groups    = DEFAULT_GROUPS
+        self._num_people    = DEFAULT_PEOPLE
         self._init_groups()
         threading.Thread(target=self._run, daemon=True).start()
 
     def _init_groups(self):
-        self.groups         = [Group() for _ in range(NUM_GROUPS)]
+        per_group = max(1, self._num_people // self._num_groups)
+        remainder = self._num_people - per_group * self._num_groups
+        self.groups = []
+        for i in range(self._num_groups):
+            c = per_group + (1 if i < remainder else 0)
+            self.groups.append(Group(count=c))
         self.phase          = "wander"
         self._tick_count    = 0
         self._total_spawned = sum(g.count for g in self.groups)
@@ -280,9 +289,13 @@ class Simulation:
                 self._history = self._history[:target + 1]
                 self._restore(self._history[-1])
 
-    def reset(self):
+    def reset(self, num_people=None, num_groups=None):
         with self._lock:
             self._running = False
+            if num_people is not None:
+                self._num_people = max(1, int(num_people))
+            if num_groups is not None:
+                self._num_groups = max(1, int(num_groups))
             self._init_groups()
 
     def snapshot(self):
@@ -356,7 +369,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             elif action == 'stop':   sim.stop()
             elif action == 'step':   sim.step()
             elif action == 'rewind': sim.rewind()
-            elif action == 'reset':  sim.reset()
+            elif action == 'reset':  sim.reset(data.get('people'), data.get('groups'))
             body = json.dumps(sim.snapshot()).encode()
             self.send_response(200)
             self.send_header('Content-Type', 'application/json')

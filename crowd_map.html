@@ -24,6 +24,11 @@
   #bar button:hover { background: #666; }
   #bar button.active { background: #1a7a3a; }
   #bar button.paused { background: #7a6a1a; }
+  #bar input[type=number] {
+    width: 80px; padding: 4px 6px; border: 1px solid #555; border-radius: 4px;
+    background: #2a2a2a; color: #ddd; font-size: 13px; text-align: center;
+  }
+  #bar label { font-size: 12px; color: #aaa; }
   #status { flex: 1; }
 </style>
 </head>
@@ -36,6 +41,8 @@
   <button id="btn-step">⏭ Step</button>
   <button id="btn-rewind">⏪ Rewind</button>
   <button id="btn-reset">↺ Reset</button>
+  <label>Emberek: <input type="number" id="inp-people" value="28800" min="1"></label>
+  <label>Csoportok: <input type="number" id="inp-groups" value="720" min="1"></label>
   <span id="status">Loading...</span>
 </div>
 
@@ -236,7 +243,15 @@ document.getElementById('btn-start').addEventListener('click', () => {
 });
 document.getElementById('btn-step').addEventListener('click',   () => control('step'));
 document.getElementById('btn-rewind').addEventListener('click', () => control('rewind'));
-document.getElementById('btn-reset').addEventListener('click',  () => control('reset'));
+document.getElementById('btn-reset').addEventListener('click', () => {
+  const people = parseInt(document.getElementById('inp-people').value) || 28800;
+  const groups = parseInt(document.getElementById('inp-groups').value) || 720;
+  fetch('/api/control', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'reset', people, groups })
+  }).then(r => r.json()).then(data => { draw(data); updateStatus(data); });
+});
 
 async function poll() {
   try {
