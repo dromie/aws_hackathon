@@ -40,7 +40,7 @@
 </div>
 
 <script>
-const RALLY = [47.4852547, 19.0713329]; // Práter utca / Szigony utca corner
+const RALLY = [47.48616316916723, 19.079061866933007]; // Nokia Skypark
 
 // Map setup
 const map = L.map('map', { zoomControl: true }).setView([47.4875, 19.0680], 15);
@@ -51,7 +51,7 @@ L.tileLayer(`${location.protocol}//${location.host}/{z}/{x}/{y}.png`, {
 
 // Rally point marker
 L.circleMarker(RALLY, { radius: 12, color: 'red', weight: 2, fill: false, dashArray: '5,4' })
-  .bindTooltip('Práter / Szigony sarok', { permanent: true, direction: 'top' })
+  .bindTooltip('Nokia Skypark', { permanent: true, direction: 'top' })
   .addTo(map);
 
 // Canvas overlay for group rendering
