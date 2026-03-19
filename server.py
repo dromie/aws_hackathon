@@ -23,9 +23,15 @@ WANDER_SEC = 6
 NUM_GROUPS = 12
 TICK_SEC   = 0.033  # ~30 fps
 
-# At zoom 15, 1 pixel ~ 3.2 metres
-PX_TO_LAT = 0.000029
-PX_TO_LNG = 0.000043
+# Conversion factors (approximate at this latitude)
+METERS_PER_LAT = 111000
+METERS_PER_LNG = 74000
+METERS_PER_PX  = 3.2  # at zoom 15
+
+
+def _dist_m(lat1, lng1, lat2, lng2):
+    return math.hypot((lat1 - lat2) * METERS_PER_LAT,
+                      (lng1 - lng2) * METERS_PER_LNG)
 
 
 # --- Build road graph ---
@@ -99,18 +105,20 @@ class Group:
 
         tn = G.nodes[self._target_node]
         tlat, tlng = tn['lat'], tn['lng']
-        dlat, dlng = tlat - self.lat, tlng - self.lng
-        dist_px = math.hypot(dlat / PX_TO_LAT, dlng / PX_TO_LNG)
+        dlat = tlat - self.lat  # degrees
+        dlng = tlng - self.lng  # degrees
+        dist_m = math.hypot(dlat * METERS_PER_LAT, dlng * METERS_PER_LNG)
+        speed_m = (1.5 + self.count * 0.04) * METERS_PER_PX
 
-        speed_px = 1.5 + self.count * 0.04
-        if dist_px <= speed_px:
-            # Snap to target node and immediately pick the next one
+        if dist_m <= speed_m:
             self.lat, self.lng = tlat, tlng
             self.node = self._target_node
             self._pick_next_node(wander)
         else:
-            self.lat += (dlat / dist_px) * speed_px * PX_TO_LAT
-            self.lng += (dlng / dist_px) * speed_px * PX_TO_LNG
+            # Move speed_m metres toward target, keeping result in degrees
+            ratio = speed_m / dist_m
+            self.lat += dlat * ratio
+            self.lng += dlng * ratio
 
     def to_dict(self):
         return {
@@ -161,16 +169,14 @@ class Simulation:
         for g in alive:
             g.step(wander)
 
-        # Merge groups whose circles overlap in pixel space
+        # Merge groups whose circles overlap (radius converted to metres)
         alive = [g for g in self.groups if g.alive]
         for i in range(len(alive)):
             for j in range(i + 1, len(alive)):
                 a, b = alive[i], alive[j]
                 if not b.alive:
                     continue
-                dpx = (a.lng - b.lng) / PX_TO_LNG
-                dpy = (a.lat - b.lat) / PX_TO_LAT
-                if math.hypot(dpx, dpy) < a.radius + b.radius:
+                if _dist_m(a.lat, a.lng, b.lat, b.lng) < (a.radius + b.radius) * METERS_PER_PX:
                     a.count += b.count
                     b.alive  = False
 
