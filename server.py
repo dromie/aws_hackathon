@@ -75,13 +75,12 @@ class Group:
         self._pick_next_node(wander=True)
 
     def _pick_next_node(self, wander=True):
-        neighbors = list(G.neighbors(self.node))
+        neighbors = [n for n in G.neighbors(self.node) if n != self.node]
         if not neighbors:
             return
         if wander:
             self._target_node = random.choice(neighbors)
         else:
-            # Move toward rally: pick neighbor that minimises distance to rally node
             def dist_to_rally(nid):
                 n = G.nodes[nid]
                 r = G.nodes[_RALLY_NODE]
@@ -94,7 +93,7 @@ class Group:
         return max(10, 8 + self.count * 1.6)
 
     def step(self, wander):
-        if self._target_node is None:
+        if self._target_node is None or self._target_node == self.node:
             self._pick_next_node(wander)
             return
 
@@ -105,14 +104,10 @@ class Group:
 
         speed_px = 1.5 + self.count * 0.04
         if dist_px <= speed_px:
-            # Arrived at target node
+            # Snap to target node and immediately pick the next one
             self.lat, self.lng = tlat, tlng
             self.node = self._target_node
-            if wander and random.random() < 0.3:
-                # Occasionally stay put for a moment
-                self._target_node = self.node
-            else:
-                self._pick_next_node(wander)
+            self._pick_next_node(wander)
         else:
             self.lat += (dlat / dist_px) * speed_px * PX_TO_LAT
             self.lng += (dlng / dist_px) * speed_px * PX_TO_LNG
