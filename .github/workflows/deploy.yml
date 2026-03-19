@@ -4,6 +4,10 @@ on:
   push:
     branches: [main]
 
+concurrency:
+  group: ecs-deploy
+  cancel-in-progress: true
+
 env:
   AWS_REGION: us-east-1
   ECR_REPO: crowd-map
